@@ -1,0 +1,39 @@
+r - height 
+b - special areas 
+g - special areas
+
+AREA CODES BLUE
+255 blue - interactable
+239 blue - nature reserve
+223 blue - city area
+207 blue - 
+191 blue - none
+175 blue - none
+159 blue - none
+127 blue - none
+111 blue - none
+95 blue - none
+79 blue - none
+63 blue - none
+47  blue - none
+31 blue - none
+15 blue - none
+0 - default
+
+AREA CODES GREEN
+255 green - name tag
+239 green - forrest
+223 green - sand
+207 green - water
+191 green - none
+175 green - none
+159 green - none
+127 green - none
+111 green - none
+95 green - none
+79 green - none
+63 green - none
+47 green - none
+31 green - none
+15 green - none
+0 - default

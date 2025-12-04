@@ -1,0 +1,2508 @@
+#include <iostream>
+#include "rendering/Window.h"
+
+InputHandler* InputHandler::instance = nullptr; 
+
+void interact_callback () {
+    std::cout << "Interaction logged!" << std::endl;
+};
+
+int main() {
+    // ==========================================================
+    /* Initialize glfw and window */
+
+    Window window( SCR_WIDTH, SCR_HEIGHT, WINDOW_TITLE );
+    InputHandler input_handler;
+    window.initGLFW();
+    if (!window.create()) return -1;
+    glfwSetScrollCallback(window.get(), InputHandler::scroll_callback);
+    double last_frame_time = 0.0f;
+
+    // ==========================================================
+    /* Create simulation objects */
+    
+    Camera world_camera = Camera(SCR_WIDTH, SCR_HEIGHT, 3.f, CAMERA_FOV, CAMERA_NEAR_CLIP_PLANE, CAMERA_FAR_CLIP_PLANE * 1000);
+    World world = World(&world_camera);
+    Terrain terrain = Terrain(HEIGHTMAP0, &world_camera);
+    Plane *terrain_obj = terrain.get_obj();
+    world.place(terrain_obj);
+    
+    Shader line_shader = ShaderManager::get_line_shader(vec3(0.f, 0.2f, 1.f));
+    Line line = Line(LINE_THICKNESS);
+    world_camera.set_orthographic(&line_shader);
+    line.set_colour( CONTOUR_LINE_COLOUR );
+    line.set_parent(terrain_obj);
+    line.move(CONTOUR_LINE_HEGHT_OFFSET);
+    world.place(&line);
+
+    // --- Interaction Objects ---
+    InteractableManager intearactable_manager = InteractableManager();
+    Interactable test_interact = Interactable(vec3(0.f), INTERACTABLE_INTERACT_DISTANCE); // Position 0, will be moved by attach
+    test_interact.add_callback(interact_callback);
+    terrain.attach_to_surface( &test_interact, 0.5f, 0.5f ); 
+    world.place(&test_interact);
+    intearactable_manager.add(&test_interact);
+
+    // --- Drawing State ---
+    bool is_drawing_path = false;
+    vec3 path_start_pos_local;
+
+    // ==========================================================
+    /* Create ui */
+
+    ScreenUI screen_ui = ScreenUI();
+    Panel test_panel = Panel(Colour::DARK_GREY, vec2(0), vec2(800, 85));
+    test_panel.set_anchor( UIAnchor::TOP_LEFT, vec2(10,-10) );
+    screen_ui.place( &test_panel );
+
+    Text test_text = Text("Layer Trains Prototype ;)", 1.5f, Colour::WHITE);
+    test_text.set_parent(&test_panel);
+    test_text.set_anchor( UIAnchor::BOTTOM_LEFT, vec2(15) );
+    screen_ui.place( &test_text );
+    
+    // ==========================================================
+    /* Render Loop */
+
+    while(window.open()) {
+        // ==========================================================
+        /* Prepare program frame - clock and user input */
+
+        float current_time = (float) glfwGetTime();
+        float dt = current_time - last_frame_time;
+        last_frame_time = current_time;
+        
+        input_handler.process_input(window.get());
+
+        // ==========================================================
+        /* Parse user input */
+        
+        vec3 camera_mv = input_handler.get_camera_movement();
+        int speedup = input_handler.is_holding_shift() ? CAMERA_SHIFT_SPEED_MULTIPLIER : 1.f;
+        
+        // Note: Using terrain_obj for rotation as per your code, though typically Camera moves around
+        terrain_obj->rotate(V3_Z * (camera_mv.x * CAMERA_PAN_SPEED * dt * speedup)); 
+        if (camera_mv.z > 0.f && terrain_obj->rotation.x < 0.f) terrain_obj->rotate(V3_X * (camera_mv.z * CAMERA_PAN_SPEED * dt * speedup)); 
+        if (camera_mv.z < 0.f && terrain_obj->rotation.x > -90.f) terrain_obj->rotate(V3_X * (camera_mv.z * CAMERA_PAN_SPEED * dt * speedup)); 
+        
+        world_camera.set_orthographic_zoom(input_handler.get_scroll_value() * 2.f); 
+        
+        // ==========================================================
+        /* Render to world position buffer texture */
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, terrain.terrain_shader.worldPosFBO);
+            window.clear(RENDER_BACKGROUND_COLOUR);
+            terrain.terrain_shader.render_to_world_pos_buffer();
+            world.render(true);
+
+        // ==========================================================
+        // --- Logic ---
+
+        vec3 mouse_pos_world = input_handler.get_mouse_position_world();
+        vec4 local_pos_4 = inverse(terrain_obj->get_transform()) * vec4(mouse_pos_world, 1.f);
+        vec3 mouse_pos_local = vec3(local_pos_4);
+
+        if (input_handler.is_left_mouse_clicked()) {
+            if (!is_drawing_path) {
+                // Click 1: Start Drawing
+                // Check if mouse is actually on terrain (simple bounds check)
+                if (abs(mouse_pos_local.x) <= 0.5f && abs(mouse_pos_local.y) <= 0.5f) {
+                    is_drawing_path = true;
+                    path_start_pos_local = mouse_pos_local;
+                    
+                    terrain.elevation_line_drawer.clear_cache();
+                    // Force generate initial segment
+                    std::vector<vec3> segment = terrain.elevation_line_drawer.get_active_path_segment(path_start_pos_local, mouse_pos_local, 0.f, true);
+                    line.set_points(segment);
+                    std::cout << "Path started." << std::endl;
+                }
+            } else {
+                // Click 2: End Drawing
+                is_drawing_path = false;
+                std::cout << "Path finished." << std::endl;
+            }
+        }
+        if (is_drawing_path) {
+            // Update path to mouse
+            if (abs(mouse_pos_local.x) <= 0.5f && abs(mouse_pos_local.y) <= 0.5f) {
+                std::vector<vec3> segment = terrain.elevation_line_drawer.get_active_path_segment(path_start_pos_local, mouse_pos_local);
+                
+                // Lift line slightly to avoid Z-fighting (Local Z up)
+                for(auto& p : segment) p.z += 0.005f; 
+                
+                line.set_points(segment);
+            }
+        }
+
+        intearactable_manager.process_all(mouse_pos_local, input_handler.is_left_mouse_clicked());
+
+        //mouse_to_obj_line.set_points( {test_interact.position, } )
+
+        // ==========================================================
+        /* Final render */
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            window.clear(RENDER_BACKGROUND_COLOUR);
+            terrain.terrain_shader.bind_world_pos_buffer();
+            terrain.terrain_shader.send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
+            world.render();
+
+        screen_ui.render( SCR_WIDTH, SCR_HEIGHT );
+        window.display(); 
+    }
+
+    glfwTerminate();
+    return 0;
+}
+
+#ifndef WORLD_H
+#define WORLD_H
+
+#include "world_objects/Object.h" // The base class for all renderable entities
+#include "shaders/Shader.h" // The base class for all renderable entities
+#include "rendering/Camera.h" // The base class for all renderable entities
+#include <vector>
+#include <memory>   // Required for std::unique_ptr
+#include <glm/glm.hpp>
+#include <stdexcept>
+
+class Camera;
+
+using namespace glm;
+
+class World {
+public:
+    std::vector<Object*> objects;
+
+    Camera *camera;
+
+    World (Camera *camera) : camera(camera) { }
+    
+    void render(bool world_pos_pass = false) {
+        for (const auto& object_ptr : objects) {
+            if (world_pos_pass && !object_ptr->render_to_world_pos) {
+                continue;
+            }
+         
+            object_ptr->calculate_transform_matrix();   
+            object_ptr->enable_shader();
+            object_ptr->configure_render_properties();
+            object_ptr->update_transform();
+            object_ptr->render(); 
+            object_ptr->disable_render_properties();
+        }
+    }
+    
+    void place(Object* obj) {
+        this->objects.push_back(obj);
+        obj->construct();
+        camera->set_orthographic(obj->shader);
+    }
+};
+
+#endif // WORLD_H
+
+#ifndef TERRAIN_H
+#define TERRAIN_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <string>
+#include <vector>
+#include <regex>
+#include "world_objects/Object.h"
+#include "world_objects/Plane.h"
+#include "rendering/Camera.h"
+#include "settings/Settings.h"
+#include "ElevationLineDrawer.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+using namespace glm;
+
+class Terrain
+{
+public:
+    Plane heightmap_plane;
+    Shader terrain_shader;
+    ElevationLineDrawer elevation_line_drawer;
+    Heightmap heightmap;
+
+    Terrain(Heightmap heightmap, Camera *camera, vec3 pos = vec3(0.0f,0.0f,0.0f)) :
+        terrain_shader(ShaderManager::get_default_world_shader()),
+        elevation_line_drawer(heightmap),
+        heightmap(heightmap)
+    {
+        // Setup the physical plane object
+        heightmap_plane = Plane(max(heightmap.height_data.width,heightmap.height_data.height), pos);
+        
+        // Center the physical mesh so y=0 is the base
+        heightmap_plane.move(V3_Y * -(heightmap.scale * 2)); 
+        
+        Texture generated_texture = bake_terrain_texture(heightmap);
+        
+        terrain_shader = ShaderManager::get_terrain_shader(heightmap, generated_texture);
+        terrain_shader.config_worldpos_buffer();
+        camera->set_orthographic(&terrain_shader);
+
+        heightmap_plane.set_shader(&terrain_shader);
+        
+        // Standard Orientation: Rotated -45 degrees on X, Scaled up 3x
+        heightmap_plane.rotate(vec3(-45.f, 0.f, 0.f));
+        heightmap_plane.scale(3.f);
+    }
+    
+    Plane* get_obj() {
+        return &heightmap_plane;
+    }
+
+    // --- Fixed Attach Function ---
+    // Attaches an object to the terrain surface at specific UV coordinates (0.0 to 1.0)
+    void attach_to_surface(Object *obj, float along_x, float along_y) {
+        if (!obj) return;
+
+        along_x = glm::clamp(along_x, 0.f, 1.f);
+        along_y = glm::clamp(along_y, 0.f, 1.f);
+
+        vec3 local_pos = elevation_line_drawer.get_local_pos_from_uv(along_x, along_y); // get local terrain position
+        obj->set_position(local_pos); // reposition obj to local space (relative to terrain)
+        //obj->scale(vec3(1.f) / heightmap_plane.size); // do not rescale objects
+        obj->set_parent(&heightmap_plane); // attached objects will follow terrain rotations
+    }
+
+private:
+    // Internal Helpers
+    static std::string clean_map_name(const std::string& name) {
+        std::string cleaned = name;
+        cleaned = std::regex_replace(cleaned, std::regex(", "), "-");
+        std::replace(cleaned.begin(), cleaned.end(), ' ', '_');
+        return cleaned;
+    }
+
+    static std::vector<vec3> load_gradient_data(const char* path, int& out_width) {
+        int height, nrChannels;
+        unsigned char *data = stbi_load(path, &out_width, &height, &nrChannels, 3);
+        std::vector<vec3> gradient;
+        if (data && out_width > 0) {
+            for (int i = 0; i < out_width; ++i) {
+                gradient.push_back(vec3(
+                    (float)data[i * 3 + 0] / 255.0f,
+                    (float)data[i * 3 + 1] / 255.0f,
+                    (float)data[i * 3 + 2] / 255.0f
+                ));
+            }
+        }
+        stbi_image_free(data);
+        return gradient;
+    }
+
+    static vec3 sample_gradient(const std::vector<vec3>& gradient, float t) {
+        if (gradient.empty()) return vec3(0.f);
+        t = glm::clamp(t, 0.0f, 1.0f);
+        int index = (int)(t * (gradient.size() - 1));
+        return gradient[index];
+    }
+
+    Texture bake_terrain_texture(Heightmap hm) {
+        #if OVERWRITE_CACHED_TEXTURES
+            bool debug_overwrite = true;
+        #else
+            bool debug_overwrite = false;
+        #endif
+
+        std::string cleaned_name = clean_map_name(hm.map_name);
+        std::string cache_path = std::string(TEXTURE_GENERATED_CACHE_FOLDER_PATH) + "/" + cleaned_name + "_colour_texture.png";
+        
+        if (!debug_overwrite && std::ifstream(cache_path).good()) {
+            return Texture(cache_path.c_str(), 0, false); 
+        }
+        
+        int width, height, nrChannels;
+        unsigned char* height_data_raw = stbi_load(hm.height_data.texturePath, &width, &height, &nrChannels, 1);
+        if (!height_data_raw) return Texture(1, 1, new unsigned char[3]{0,0,0}, 3); 
+
+        int grad_w;
+        std::vector<vec3> grad_elev = load_gradient_data(GRADIENT_ELEVATION_PATH, grad_w);
+        std::vector<vec3> grad_steep = load_gradient_data(GRADIENT_STEEPNESS_PATH, grad_w);
+        std::vector<vec3> grad_water = load_gradient_data(GRADIENT_WATER_PATH, grad_w);
+
+        std::vector<unsigned char> color_buffer(width * height * 3);
+        float height_range = hm.max_height - hm.min_height;
+        
+        auto get_h = [&](int x, int y) -> float {
+            return (float)height_data_raw[glm::clamp(y,0,height-1)*width + glm::clamp(x,0,width-1)] / 255.0f;
+        };
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int idx = (y * width + x) * 3;
+                float norm_h = get_h(x, y);
+                float curr_elev = hm.min_height + norm_h * height_range;
+                vec3 finalColor;
+
+                if (curr_elev > hm.water_level_height) {
+                    const int S = STEEPNESS_SMOOTHING_STEP_SIZE;
+                    float dx = (get_h(x+S,y) - get_h(x-S,y)) / (2.f*S);
+                    float dy = (get_h(x,y+S) - get_h(x,y-S)) / (2.f*S);
+                    float steepness = glm::length(vec2(dx, dy));
+                    
+                    float t_elev = glm::clamp(curr_elev / ELEVATION_GRADIENT_MAX_HEIGHT, 0.f, 1.f);
+                    float t_steep = glm::clamp(steepness * STEEPNESS_SCALE, 0.f, 1.f);
+                    finalColor = glm::mix(sample_gradient(grad_steep, t_steep), sample_gradient(grad_elev, t_elev), ELEVATION_GRADIENT_STRENGTH);
+                } else {
+                    float depth = glm::clamp((hm.water_level_height - curr_elev) / hm.water_level_height, 0.f, 1.f);
+                    finalColor = sample_gradient(grad_water, depth * depth);
+                }
+                color_buffer[idx] = (unsigned char)(finalColor.r * 255.f);
+                color_buffer[idx+1] = (unsigned char)(finalColor.g * 255.f);
+                color_buffer[idx+2] = (unsigned char)(finalColor.b * 255.f);
+            }
+        }
+        stbi_image_free(height_data_raw);
+        stbi_write_png(cache_path.c_str(), width, height, 3, color_buffer.data(), width * 3);
+        return Texture(width, height, color_buffer.data()); 
+    }
+};
+
+#endif
+#ifndef SPHERE_H
+#define SPHERE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <vector>
+#include <cmath>
+#include "Object.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+using namespace glm;
+
+class Sphere : public Object
+{
+private:
+    unsigned int VAO;
+    unsigned int VBO;
+    unsigned int EBO;
+    unsigned int indexCount;
+
+    int sectors;
+    int stacks;
+
+    float raduis = 0.f;
+
+public:
+    // Default to 36 sectors and 18 stacks for a smooth sphere
+    Sphere(vec3 pos = vec3(0.0f,0.0f,0.0f), float raduis = 1.f, int sectors = 36, int stacks = 18) 
+        : Object(pos, vec3(raduis)), sectors(sectors), stacks(stacks), indexCount(0), raduis(raduis)
+    {}
+
+    void construct() override {
+        std::vector<float> data;
+        std::vector<unsigned int> indices;
+
+        float x, y, z, xy;                              // vertex position
+        float nx, ny, nz, lengthInv = 1.0f / 0.5f;      // vertex normal
+        float s, t;                                     // vertex texCoord
+
+        float sectorStep = 2 * M_PI / sectors;
+        float stackStep = M_PI / stacks;
+        float sectorAngle, stackAngle;
+        float radius = 0.5f;
+
+        for(int i = 0; i <= stacks; ++i)
+        {
+            stackAngle = M_PI / 2 - i * stackStep;      // starting from pi/2 to -pi/2
+            xy = radius * cosf(stackAngle);             // r * cos(u)
+            z = radius * sinf(stackAngle);              // r * sin(u)
+
+            for(int j = 0; j <= sectors; ++j)
+            {
+                sectorAngle = j * sectorStep;           // starting from 0 to 2pi
+
+                // Vertex Position (x, y, z)
+                x = xy * cosf(sectorAngle);             // r * cos(u) * cos(v)
+                y = xy * sinf(sectorAngle);             // r * cos(u) * sin(v)
+                data.push_back(x);
+                data.push_back(y);
+                data.push_back(z);
+
+                // Texture Coordinates (s, t) range [0, 1]
+                s = (float)j / sectors;
+                t = (float)i / stacks;
+                data.push_back(s);
+                data.push_back(t);
+            }
+        }
+
+        int k1, k2;
+        for(int i = 0; i < stacks; ++i)
+        {
+            k1 = i * (sectors + 1);     // beginning of current stack
+            k2 = k1 + sectors + 1;      // beginning of next stack
+
+            for(int j = 0; j < sectors; ++j, ++k1, ++k2)
+            {
+                // 2 triangles per sector excluding first and last stacks
+                // k1 => k2 => k1+1
+                if(i != 0)
+                {
+                    indices.push_back(k1);
+                    indices.push_back(k2);
+                    indices.push_back(k1 + 1);
+                }
+
+                // k1+1 => k2 => k2+1
+                if(i != (stacks - 1))
+                {
+                    indices.push_back(k1 + 1);
+                    indices.push_back(k2);
+                    indices.push_back(k2 + 1);
+                }
+            }
+        }
+
+        this->indexCount = indices.size();
+
+        // 3. OpenGL Buffers
+        glGenVertexArrays(1, &this->VAO);
+        glGenBuffers(1, &this->VBO);
+        glGenBuffers(1, &this->EBO);
+
+        glBindVertexArray(this->VAO);
+
+        // Load VBO
+        glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
+        glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
+
+        // Load EBO
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+
+        // Pointers (Pos: 3 floats, Tex: 2 floats) = Stride 5
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        glBindVertexArray(0); 
+    }
+
+    void render() override {        
+        if (!visible) return;
+        glBindVertexArray(this->VAO);
+        glDrawElements(GL_TRIANGLES, this->indexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+
+    ~Sphere() override {
+        glDeleteVertexArrays(1, &VAO);
+        glDeleteBuffers(1, &VBO);
+        glDeleteBuffers(1, &EBO);
+    }
+};
+
+#endif
+#ifndef PLANE_H
+#define PLANE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Plane : public Object
+{
+private:
+    unsigned int VAO;
+    unsigned int VBO;
+    unsigned int EBO;
+    unsigned int n;
+
+public:
+    Plane(int vert_num_per_side = 2, vec3 pos = vec3(0.0f,0.0f,0.0f), vec3 size = vec3(1.0f,1.0f,1.0f)) 
+        : Object(pos, size), n(max(2,vert_num_per_side))
+    {}
+
+    void construct() override {
+        glGenVertexArrays(1, &this->VAO);
+        glGenBuffers(1, &this->VBO);
+        glGenBuffers(1, &this->EBO);
+
+        glBindVertexArray(this->VAO);
+
+        subdivide();
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0); 
+        // Do NOT unbind GL_ELEMENT_ARRAY_BUFFER while VAO is bound — it's stored in the VAO.
+        glBindVertexArray(0); 
+    }
+
+    void render() override {
+        if (!visible) return;
+        glBindVertexArray(this->VAO); 
+        int num_indices = (n-1)*(n-1)*6;
+        glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+
+    ~Plane() override {
+        glDeleteVertexArrays(1, &VAO);
+        glDeleteBuffers(1, &VBO);
+        glDeleteBuffers(1, &EBO);
+    }
+
+private:
+    void subdivide() {        
+        const float x_min = -.5f, w = 1.f;
+        const float y_min = -.5f, h = 1.f;
+        const float tex_coord_mult = 2.f;
+        
+        // Recompute vertices using floating-point division (avoid integer division bug above)
+        std::vector<float> subdiv_vertices(n*n*5);
+        subdiv_vertices.assign(n*n*5, 0.0f);
+
+        int i = 0;
+        for (int y = 0; y < n; ++y) {
+            for (int x = 0; x < n; ++x) {
+                float vert_pos_x = x_min+((float)x/(n-1))*w;
+                float vert_pos_y = y_min+((float)y/(n-1))*h;
+                
+                subdiv_vertices[i++] = vert_pos_x;
+                subdiv_vertices[i++] = vert_pos_y;
+                subdiv_vertices[i++] = 0.0f;
+                subdiv_vertices[i++] = (vert_pos_x - x_min) / w;
+                subdiv_vertices[i++] = (vert_pos_y - y_min) / h;
+            }
+        }
+        
+        // Fill indices: for each cell (x,y) produce two triangles: (bl, br, tr) and (tr, tl, bl)
+        std::vector<unsigned int> subdiv_indices((n-1)*(n-1)*6);
+
+        i = 0;
+        for (int y = 0; y < n - 1; ++y) {
+            for (int x = 0; x < n - 1; ++x) {
+            unsigned int bl = y * n + x;        // bottom-left
+            unsigned int br = bl + 1;           // bottom-right
+            unsigned int tl = (y + 1) * n + x;  // top-left
+            unsigned int tr = tl + 1;           // top-right
+
+            subdiv_indices[i++] = bl;
+            subdiv_indices[i++] = br;
+            subdiv_indices[i++] = tr;
+
+            subdiv_indices[i++] = tr;
+            subdiv_indices[i++] = tl;
+            subdiv_indices[i++] = bl;
+            }
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
+        glBufferData(GL_ARRAY_BUFFER, subdiv_vertices.size() * sizeof(float), subdiv_vertices.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, subdiv_indices.size() * sizeof(unsigned int), subdiv_indices.data(), GL_STATIC_DRAW);
+    }
+};
+
+// inline const float Plane::vertices[] = {
+//     // positions         // tex coords
+//     -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, // 0
+//      0.5f, -0.5f, 0.0f,   1.0f, 0.0f, // 1
+//      0.5f,  0.5f, 0.0f,   1.0f, 1.0f, // 2
+//     -0.5f,  0.5f, 0.0f,   0.0f, 1.0f  // 3
+// };
+
+// inline const unsigned int Plane::indices[] = {
+//     0, 1, 2,
+//     2, 3, 0
+// };
+
+#endif
+#ifndef PLANE_H
+#define PLANE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Plane : public Object
+{
+private:
+    unsigned int VAO;
+    unsigned int VBO;
+    unsigned int EBO;
+    unsigned int n;
+
+public:
+    Plane(int vert_num_per_side = 2, vec3 pos = vec3(0.0f,0.0f,0.0f), vec3 size = vec3(1.0f,1.0f,1.0f)) 
+        : Object(pos, size), n(max(2,vert_num_per_side))
+    {}
+
+    void construct() override {
+        glGenVertexArrays(1, &this->VAO);
+        glGenBuffers(1, &this->VBO);
+        glGenBuffers(1, &this->EBO);
+
+        glBindVertexArray(this->VAO);
+
+        subdivide();
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, 0); 
+        // Do NOT unbind GL_ELEMENT_ARRAY_BUFFER while VAO is bound — it's stored in the VAO.
+        glBindVertexArray(0); 
+    }
+
+    void render() override {
+        if (!visible) return;
+        glBindVertexArray(this->VAO); 
+        int num_indices = (n-1)*(n-1)*6;
+        glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+
+    ~Plane() override {
+        glDeleteVertexArrays(1, &VAO);
+        glDeleteBuffers(1, &VBO);
+        glDeleteBuffers(1, &EBO);
+    }
+
+private:
+    void subdivide() {        
+        const float x_min = -.5f, w = 1.f;
+        const float y_min = -.5f, h = 1.f;
+        const float tex_coord_mult = 2.f;
+        
+        // Recompute vertices using floating-point division (avoid integer division bug above)
+        std::vector<float> subdiv_vertices(n*n*5);
+        subdiv_vertices.assign(n*n*5, 0.0f);
+
+        int i = 0;
+        for (int y = 0; y < n; ++y) {
+            for (int x = 0; x < n; ++x) {
+                float vert_pos_x = x_min+((float)x/(n-1))*w;
+                float vert_pos_y = y_min+((float)y/(n-1))*h;
+                
+                subdiv_vertices[i++] = vert_pos_x;
+                subdiv_vertices[i++] = vert_pos_y;
+                subdiv_vertices[i++] = 0.0f;
+                subdiv_vertices[i++] = (vert_pos_x - x_min) / w;
+                subdiv_vertices[i++] = (vert_pos_y - y_min) / h;
+            }
+        }
+        
+        // Fill indices: for each cell (x,y) produce two triangles: (bl, br, tr) and (tr, tl, bl)
+        std::vector<unsigned int> subdiv_indices((n-1)*(n-1)*6);
+
+        i = 0;
+        for (int y = 0; y < n - 1; ++y) {
+            for (int x = 0; x < n - 1; ++x) {
+            unsigned int bl = y * n + x;        // bottom-left
+            unsigned int br = bl + 1;           // bottom-right
+            unsigned int tl = (y + 1) * n + x;  // top-left
+            unsigned int tr = tl + 1;           // top-right
+
+            subdiv_indices[i++] = bl;
+            subdiv_indices[i++] = br;
+            subdiv_indices[i++] = tr;
+
+            subdiv_indices[i++] = tr;
+            subdiv_indices[i++] = tl;
+            subdiv_indices[i++] = bl;
+            }
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
+        glBufferData(GL_ARRAY_BUFFER, subdiv_vertices.size() * sizeof(float), subdiv_vertices.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->EBO);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, subdiv_indices.size() * sizeof(unsigned int), subdiv_indices.data(), GL_STATIC_DRAW);
+    }
+};
+
+// inline const float Plane::vertices[] = {
+//     // positions         // tex coords
+//     -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, // 0
+//      0.5f, -0.5f, 0.0f,   1.0f, 0.0f, // 1
+//      0.5f,  0.5f, 0.0f,   1.0f, 1.0f, // 2
+//     -0.5f,  0.5f, 0.0f,   0.0f, 1.0f  // 3
+// };
+
+// inline const unsigned int Plane::indices[] = {
+//     0, 1, 2,
+//     2, 3, 0
+// };
+
+#endif
+ #ifndef OBJECT_H
+#define OBJECT_H
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "settings/Utility.h"
+#include "textures/Texture.h"
+#include "shaders/ShaderManager.h"
+#include "ColourData.h"
+
+using namespace glm;
+
+class Object
+{
+public:
+    vec3 position;
+    vec3 size;
+    vec3 rotation;
+    bool visible;
+    Shader *shader;
+
+    vec4 colour = Colour::PINK;
+    float opacity = 1.f;
+    bool uses_texture = false;
+
+    bool has_parent = false;
+    Object *parent;
+
+    bool render_to_world_pos = true;
+
+    mat4 global_transform_matrix, local_transform_matrix;
+
+    virtual ~Object() = default;
+
+    Object(vec3 pos = vec3(0.0f), vec3 size = vec3(1.0f))
+        : position(pos), size(size), rotation(vec3(0.0f)), visible(true) {
+
+        shader = &ShaderManager::get_default_world_shader();
+    }
+    // Object(const Object&) = delete; // Blokada kopiowania
+    // Object& operator=(const Object&) = delete;
+
+    // necessary functions
+    virtual void render() = 0;
+    virtual void construct() = 0;
+    virtual void configure_render_properties() {
+        shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
+        shader->setBool("useTexture", uses_texture);
+    };
+    virtual void disable_render_properties() {};
+
+    // position
+    void move(vec3 v){ this->position += v; }
+    void set_position(vec3 p){ this->position = p; }
+
+    // rotations
+    void rotate(vec3 rt_xyz){ this->rotation += rt_xyz; }
+    void set_rotation(vec3 rt_xyz){ this->rotation = rt_xyz; }
+
+    // scaling
+    void scale(vec3 s){ this->size *= s; }
+    void scale(float s){ this->size *= vec3(s,s,s); }
+    void set_size(vec3 s){    this->size = s; }
+    void set_size(float s){ this->size = vec3(s,s,s); }
+
+    // transform calculations
+    void calculate_local_transform() {
+        local_transform_matrix = mat4(1.0f);
+        local_transform_matrix = glm::translate(local_transform_matrix, this->position);
+        local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.x), V3_X);
+        local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.y), V3_Y);
+        local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.z), V3_Z);
+        local_transform_matrix = glm::scale(local_transform_matrix, this->size);
+    }
+    void calculate_transform_matrix() {
+        calculate_local_transform();
+
+        if (has_parent) {
+            // Mnożenie macierzy: Transformacja rodzica * Transformacja lokalna
+            global_transform_matrix = parent->get_transform() * local_transform_matrix;
+        } else {
+            global_transform_matrix = local_transform_matrix;
+        }
+    }
+    
+    // basic fucntions
+    mat4 get_transform() {    return global_transform_matrix; }
+    void set_visible(bool is_visible) { visible = is_visible; }
+    void set_parent(Object *parent) { has_parent = true; this->parent = parent; }
+    void set_transparency (float alpha) { opacity = glm::clamp(alpha, 0.f, 1.f); }
+    void set_colour (vec3 new_colour) { colour = vec4(new_colour, 1.f); }
+    void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; } }
+    void set_texture (Texture tex) { uses_texture = true; shader->setTexture(tex); }
+    void set_shader (Shader *s) { shader = s; }
+    void enable_shader() { shader->use(); }
+    void update_transform() { shader->setMatrix("transform", global_transform_matrix); }
+
+};
+
+#endif // OBJECT_H
+#ifndef LINE_H
+#define LINE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Line : public Object
+{
+private:
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    std::vector<vec3> points;
+    std::vector<int> line_segment_breaks;
+    float line_thickness = 5.f;
+
+public:
+    Line(std::vector<vec3> points, float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness),
+        points(points)
+    { }    
+
+    Line(float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness),
+        points(NULL)
+    { }
+
+    void construct() override {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    void render() override {
+        if (points.size() < 2) return;
+       
+        //glDisable(GL_DEPTH_TEST);
+
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_DYNAMIC_DRAW);
+
+        glLineWidth(line_thickness);
+        
+        glDrawArrays(GL_LINE_STRIP, 0, line_segment_breaks[0]);
+        for (int i=1; i<line_segment_breaks.size(); i++) 
+            glDrawArrays(GL_LINE_STRIP, line_segment_breaks[i-1]+1, line_segment_breaks[i]-line_segment_breaks[i-1]-1);
+       
+        glBindVertexArray(0);
+        //glEnable(GL_DEPTH_TEST);
+    }
+
+    void add_point(vec3 p) {
+        points.push_back(p);
+        if(line_segment_breaks.size() == 0) line_segment_breaks.push_back(points.size());
+        else line_segment_breaks[line_segment_breaks.size()-1] ++;
+    }
+    void set_points(std::vector<vec3> new_points) {
+        line_segment_breaks.clear();
+        for (int i=0; i<new_points.size(); i++) {
+            if (new_points[i] == NEW_LINE_SEGMENT_V3) {
+                line_segment_breaks.push_back(i);
+            }
+        }
+        this->points = new_points;
+        line_segment_breaks.push_back(new_points.size());
+    }
+    void clear_points() {
+        points.clear();
+    }
+
+    ~Line() override {
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+    }
+};
+
+#endif 
+
+// #ifndef LINE_H
+// #define LINE_H
+
+// #include <glad/glad.h>
+// #include <GLFW/glfw3.h>
+
+// #include <string>
+// #include <fstream>
+// #include <sstream>
+// #include <iostream>
+// #include <vector>
+// #include "world_objects/Object.h"
+
+// #include <glm/glm.hpp>
+// #include <glm/gtc/matrix_transform.hpp>
+// #include <glm/gtc/type_ptr.hpp>
+
+// using namespace glm;
+
+// class Line : public Object
+// {
+// private:
+//     std::vector<unsigned int> vao;
+//     std::vector<unsigned int> vbo;
+//     //std::vector<vec3> points;
+//     std::vector<std::vector<vec3>> segmented_points; 
+//     int line_segment_num = 0;
+//     float line_thickness = 5.f;
+
+// public:
+//     Line(std::vector<vec3> points, float line_thickness = 3.f) 
+//         : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness)
+//     { set_points(points); }    
+
+//     Line(float line_thickness = 3.f) 
+//         : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness)
+//     { }
+
+//     void construct() override {
+//         for (int i=0; i<line_segment_num; i++) {
+//             glGenVertexArrays(1, &vao[i]);
+//             glGenBuffers(1, &vbo[i]);
+//             glBindVertexArray(vao[i]);
+//             glBindBuffer(GL_ARRAY_BUFFER, vbo[i]);
+//             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+//             glEnableVertexAttribArray(0);
+//             glBindVertexArray(0);
+//         }
+//     }
+
+//     // render: używa segments, nie indeksów sentinel
+//     void render() override {
+//         for (int i=0; i<line_segment_num; i++) {
+
+//             if (segmented_points[i].size() < 2) return;
+            
+//             glDisable(GL_DEPTH_TEST);
+//             glBindVertexArray(vao[i]);
+//             glBindBuffer(GL_ARRAY_BUFFER, vbo[i]);
+//             glBufferData(GL_ARRAY_BUFFER, segmented_points[i].size() * sizeof(glm::vec3), segmented_points[i].data(), GL_DYNAMIC_DRAW);
+            
+//             glLineWidth(line_thickness);
+//             glDrawArrays(GL_LINE_STRIP, 0, segmented_points[i].size());
+            
+//             glBindVertexArray(0);
+//             glEnable(GL_DEPTH_TEST);
+//         }
+//     }
+
+//     void add_point(vec3 p) {
+//         if (line_segment_num > 0){
+//             segmented_points[line_segment_num-1].push_back(p);
+//         }
+//     }
+//     void set_points(const std::vector<glm::vec3>& new_points, bool multiple_segments = false) {
+//         segmented_points.clear();
+        
+//         if (!multiple_segments) {
+//             points = new_points;
+//             segments.emplace_back(0, (int)points.size());
+//             return;
+//         }
+
+//         int current_start = 0;
+//         for (size_t i = 0; i < new_points.size(); ++i) {
+//             if (new_points[i] == NEW_LINE_SEGMENT_V3) {
+//                 // dodaj segment od current_start do i-1 (jeśli są punkty)
+//                 int count = (int)i - current_start;
+//                 if (count > 0) segments.emplace_back(current_start, count);
+//                 // nie kopiujemy sentinel do points --> just skip it
+//                 current_start = (int)i + 1;
+//             } else {
+//                 points.push_back(new_points[i]);
+//             }
+//         }
+//         // pozostały segment (jeśli jakiś)
+//         if (current_start < (int)new_points.size()) {
+//             // ale pamiętaj: current_start odnosi się do oryginalnego new_points,
+//             // ponieważ kopiowaliśmy tylko nie-sentinel, trzeba poprawić starts.
+//             // Prostsze: buduj segments na podstawie points przy iteracji:
+//             // poniższy kod jest bezpieczniejszy:
+//         }
+
+//         // Prostszą i bezbłędną wersją jest:
+//         points.clear();
+//         segments.clear();
+//         int segStart = 0;
+//         for (size_t i=0; i<new_points.size(); ++i) {
+//             if (new_points[i] == NEW_LINE_SEGMENT_V3) {
+//                 int segCount = (int)points.size() - segStart; // liczba punktów dopisanych do current segment
+//                 if (segCount > 0) segments.emplace_back(segStart, segCount);
+//                 segStart = (int)points.size(); // next segment will start at current compacted size
+//             } else {
+//                 points.push_back(new_points[i]);
+//             }
+//         }
+//         // ostatni segment
+//         if (points.size() > (size_t)segStart) segments.emplace_back(segStart, (int)points.size() - segStart);
+//     }
+
+
+//     ~Line() override {
+//         glDeleteVertexArrays(1, &vao);
+//         glDeleteBuffers(1, &vbo);
+//     }
+// };
+
+// #endif
+
+
+#ifndef CUBE_H
+#define CUBE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "Object.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Cube : public Object
+{
+private:
+    unsigned int VAO;
+    unsigned int VBO;
+    static const float vertices[];
+
+public:
+    Cube(vec3 pos = vec3(0.0f,0.0f,0.0f), vec3 size = vec3(1.0f,1.0f,1.0f)) 
+        : Object(pos, size) 
+    {}
+
+    void construct() override {
+        glGenVertexArrays(1, &this->VAO);
+        glGenBuffers(1, &this->VBO);
+        glBindVertexArray(this->VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, this->VBO);
+        glBufferData(GL_ARRAY_BUFFER, 180*sizeof(float), Cube::vertices, GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
+        glEnableVertexAttribArray(1);
+        glBindBuffer(GL_ARRAY_BUFFER, 0); 
+        glBindVertexArray(0); 
+    }
+
+    void render() override {        
+        if (!visible) return;
+        glBindVertexArray(this->VAO); 
+        glDrawArrays(GL_TRIANGLES, 0, 2*6*3);
+        glBindVertexArray(0);
+    }
+
+    ~Cube() override { // destructor
+        glDeleteVertexArrays(1, &VAO);
+        glDeleteBuffers(1, &VBO);
+    }
+};
+
+inline const float Cube::vertices[] = {
+    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+     0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+     0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+     0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+     0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+     0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+     0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+};
+
+#endif
+#ifndef InteractableManager_H
+#define InteractableManager_H
+
+#include "shaders/Shader.h" // The base class for all renderable entities
+#include "rendering/Camera.h" // The base class for all renderable entities
+#include "Interactable.h" // The base class for all renderable entities
+#include <vector>
+#include <memory>   // Required for std::unique_ptr
+#include <glm/glm.hpp>
+#include <stdexcept>
+
+class Object;
+
+using namespace glm;
+
+class InteractableManager {
+public:
+    std::vector<Interactable*> interactables;
+
+    InteractableManager () { }
+
+    void process_all ( vec3 click_pos, bool call_objects_in_range ) {
+        for (const auto& i : interactables) {
+            float dx = click_pos.x - i->position.x;
+            float dy = click_pos.y - i->position.y;
+            float dz = click_pos.z - i->position.z;
+            float distance_squared = dx*dx + dy*dy + dz*dz;
+            i->process(distance_squared, call_objects_in_range);
+        }
+    }
+    void add(Interactable* interactable) {
+        this->interactables.push_back(interactable);
+
+        Object* obj = dynamic_cast<Object*>(interactable);
+        if (!obj) {
+            throw std::runtime_error("add: Interactable is not an Object");
+        }
+        obj->construct();
+    }
+};
+
+#endif // InteractableManager_H
+#ifndef Interactable_H
+#define Interactable_H
+
+#include "shaders/Shader.h" 
+#include "rendering/Camera.h" 
+#include "Sphere.h" 
+#include "ColourData.h" 
+#include <vector>
+#include <memory>
+#include <glm/glm.hpp>
+#include <stdexcept>
+#include <functional>
+
+class Camera;
+
+using namespace glm;
+
+class Interactable : public Object {
+public:
+
+    using InteractionCallback = std::function<void()>;
+    std::vector<InteractionCallback> callbacks;
+    
+    float interaction_distance = 0.f;
+    float interaction_distance_sqr = 0.f;
+    float highlight_distance_sqr = 0.f;
+
+    Sphere render_sphere;
+
+    Interactable(vec3 position, float interaction_distance = 1.f) : 
+        Object(position,vec3(interaction_distance)), 
+        interaction_distance(interaction_distance),
+        render_sphere(position, interaction_distance*INTERACTABLE_RENDER_RADUIS_MUTLIPLIER) 
+        {
+        this->render_to_world_pos = false;
+        interaction_distance_sqr = interaction_distance*interaction_distance;
+        highlight_distance_sqr = interaction_distance_sqr;
+    }
+
+    void add_callback(const InteractionCallback& callback_function) {
+        callbacks.push_back(callback_function);
+    }
+
+    void call() {
+        render_sphere.set_colour( Colour::RED );
+        for (const auto& callback : callbacks) { 
+            if (callback) callback();
+        }
+    }
+
+    void process (float distance_sqr, bool call_in_range ) {
+        //highlight obj if in range
+        if (distance_sqr <= highlight_distance_sqr){
+            render_sphere.set_colour( INTERACTABLE_HIGHLIGHTED_COLOUR );
+            render_sphere.set_transparency ( INTERACTABLE_HIGHLIGHTED_OBJECT_ALPHA );
+        } else {
+            render_sphere.set_colour( INTERACTABLE_DEFUALT_COLOUR );
+            render_sphere.set_transparency ( INTERACTABLE_OBJECT_ALPHA );
+        }
+
+        // call if in range and flag set
+        if (call_in_range && distance_sqr <= interaction_distance_sqr) call();
+    }
+
+    void configure_render_properties () override {
+        render_sphere.configure_render_properties();
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+    }
+    void disable_render_properties () override {
+        render_sphere.disable_render_properties();
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+    }
+    void render () override {
+        render_sphere.set_position(position);
+        render_sphere.set_size(size);
+        render_sphere.render();
+    }
+    void construct () override {
+        render_sphere.construct();
+    }
+};
+
+#endif // Interactable_H
+#ifndef INPUT_H
+#define INPUT_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include "settings/Utility.h"
+#include "settings/Settings.h"
+#include <algorithm> // Dla std::clamp
+
+using namespace glm;
+
+class InputHandler {
+private:
+    vec3 camera_mv;
+    bool simulation_paused, was_space_pressed;
+    bool holding_shift;
+    float scroll_value;
+    vec2 mouse_position_normalized; // Twoja oryginalna dziwna normalizacja (0-1)
+    vec2 mouse_position_pixels;     // Surowe piksele ekranu
+    bool was_mouse_pressed, is_mouse_pressed;         // Do wykrywania krawędzi kliknięcia
+
+    static InputHandler *instance;
+
+public:
+
+    InputHandler() : 
+        camera_mv(vec3(0.f)), 
+        simulation_paused(false), was_space_pressed(false), 
+        scroll_value(1.0f),
+        was_mouse_pressed(false), is_mouse_pressed(false)
+    {
+        instance = this;
+    }
+
+    void process_input(GLFWwindow *w){
+        if(glfwGetKey(w, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+            glfwSetWindowShouldClose(w, true);
+        
+        // camera movement
+        camera_mv = vec3(0.f);
+        if(glfwGetKey(w, GLFW_KEY_W) == GLFW_PRESS)
+            camera_mv += V3_Z;
+        if(glfwGetKey(w, GLFW_KEY_S) == GLFW_PRESS)
+            camera_mv -= V3_Z;
+        if(glfwGetKey(w, GLFW_KEY_A) == GLFW_PRESS)
+            camera_mv += V3_X;
+        if(glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS)
+            camera_mv -= V3_X;
+
+        // if(glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        //     camera_mv += V3_Y;
+        // if(glfwGetKey(w, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+        //     camera_mv -= V3_Y;
+
+        // pause
+        if(glfwGetKey(w, GLFW_KEY_SPACE) == GLFW_PRESS){
+            if (!was_space_pressed) simulation_paused = !simulation_paused; 
+            was_space_pressed = true;
+        }
+        else was_space_pressed = is_mouse_pressed = false;
+        
+        holding_shift = glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+
+        // get mouse position
+        double xpos, ypos;
+        glfwGetCursorPos(w, &xpos, &ypos);
+        mouse_position_normalized = vec2((float)(xpos / SCR_WIDTH)*2.f, (0.5f - (float)(ypos / SCR_HEIGHT))*2.f);
+        mouse_position_normalized += vec2(0.011f, -0.015f); // offset idk why ???
+        mouse_position_normalized.x = clamp(mouse_position_normalized.x, 0.f, 1.f);
+        mouse_position_normalized.y = clamp(mouse_position_normalized.y, 0.f, 1.f);
+        mouse_position_pixels = vec2(xpos, ypos);
+
+        // Wykrywanie kliknięcia - krawędź
+        if (glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            is_mouse_pressed = !was_mouse_pressed;
+            was_mouse_pressed = true;
+        } else {
+            was_mouse_pressed = false;
+        }
+
+    }
+
+    // Statyczna funkcja zwrotna (callback) GLFW dla kółka myszy
+    static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+        if (instance) instance->update_scroll_value((float)yoffset);
+    }
+
+    // Metoda do aktualizacji wartości scroll_value (zoom)
+    void update_scroll_value(float yoffset) {
+        scroll_value -= yoffset * CAMERA_ZOOM_SPEED; 
+        scroll_value = std::clamp(scroll_value, 0.01f, 2.f);
+    }
+
+    vec3 get_camera_movement() { return camera_mv; }
+    bool get_simulation_paused() { return simulation_paused; }
+    float get_scroll_value() { return scroll_value; }
+    bool is_holding_shift() { return holding_shift; }
+    bool is_left_mouse_clicked() { return is_mouse_pressed; }
+
+    // Znormalizowana pozycja myszy (do shadera)
+    vec2 get_mouse_position_normalized() { return mouse_position_normalized; }
+    vec2 get_mouse_position_pixels() { return mouse_position_pixels; }
+
+    vec3 get_mouse_position_world() {
+        // 2. Odczytaj piksel pod myszą
+        int mouse_y_gl = SCR_HEIGHT - (int)mouse_position_pixels.y; // Odwróć oś Y GL
+        
+        float pixelData[3];
+        glReadBuffer(GL_COLOR_ATTACHMENT15);
+
+        // Sprawdzenie granic, aby uniknąć błędów glReadPixels
+        if (mouse_position_pixels.x < 0 || mouse_position_pixels.x >= SCR_WIDTH || mouse_y_gl < 0 || mouse_y_gl >= SCR_HEIGHT) {
+            return vec3(-1.0f);
+        }
+        glReadPixels((int)mouse_position_pixels.x, mouse_y_gl, 1, 1, GL_RGB, GL_FLOAT, &pixelData);
+        return vec3(pixelData[0], pixelData[1], pixelData[2]);
+    }
+
+};
+
+#endif // WORLD_H
+
+#define TEXTURE_MISSING Texture("C:/Media/Projects/OpenGL/Layer_Trains/textures/missing_texture.png", 0)
+#define TEXTURE_EMPTY Texture("C:/Media/Projects/OpenGL/Layer_Trains/textures/empty_texture.png", 0)
+
+#define TEXTURE_GENERATED_CACHE_FOLDER_PATH "C:/Media/Projects/OpenGL/Layer_Trains/textures/generated"
+
+// transalpine heightmap for testing
+#define H0_TITLE "Transalpine pass, Romania"
+#define H0_PATH "C:/Media/Projects/OpenGL/Layer_Trains/textures/heightmaps/heightmap_transalpine_1024.png"
+#define H0_MIN_HEIGHT 1000.f
+#define H0_MAX_HEIGHT 2500.f
+#define H0_SCALE 295.07f / 1024.f
+#define HEIGHTMAP0 Heightmap(H0_PATH, H0_MIN_HEIGHT, H0_MAX_HEIGHT, H0_SCALE, H0_TITLE)
+
+// colour gradient textures
+#define GRADIENT_ELEVATION_PATH "C:/Media/Projects/OpenGL/Layer_Trains/textures/gradients/elevation_gradient.png"
+#define GRADIENT_STEEPNESS_PATH "C:/Media/Projects/OpenGL/Layer_Trains/textures/gradients/steepness_gradient.png"
+#define GRADIENT_WATER_PATH "C:/Media/Projects/OpenGL/Layer_Trains/textures/gradients/water_gradient.png"
+#define GRADIENT_ELEVATION Texture(GRADIENT_ELEVATION_PATH, 2);
+#define GRADIENT_STEEPNESS Texture(GRADIENT_STEEPNESS_PATH, 3);
+#define GRADIENT_WATER Texture(GRADIENT_WATER_PATH, 4);
+
+
+#ifndef TEXTURE_H
+#define TEXTURE_H
+
+#include <glad/glad.h>
+
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+class Texture
+{
+public:
+    unsigned int ID;
+    unsigned int texture_slot;
+    unsigned int width = -1, height = -1;
+    const char* texturePath;
+
+    // generate from file path
+    Texture(const char* texturePath, int texture_slot=0, bool flip_vert = true)
+        : texture_slot(glm::max(0,glm::min(15,texture_slot))), texturePath(texturePath)
+    {
+        glGenTextures(1, &ID);
+        glBindTexture(GL_TEXTURE_2D, ID);
+
+        // set the texture wrapping/filtering options (on the currently bound texture object)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // invert texture
+        stbi_set_flip_vertically_on_load(flip_vert);  
+
+        // load and generate the texture
+        int width, height, nrColourChannels;
+        unsigned char *data = stbi_load(texturePath, &width, &height, &nrColourChannels, 0);
+        
+        if (data){
+            this->width = width;
+            this->height = height;
+            int colour_range = nrColourChannels == 4 ? GL_RGBA : nrColourChannels == 3 ? GL_RGB : GL_RED;
+            glTexImage2D(GL_TEXTURE_2D, 0, colour_range, width, height, 0, colour_range, GL_UNSIGNED_BYTE, data);
+            glGenerateMipmap(GL_TEXTURE_2D);
+        }
+        else {
+            std::cout << "Failed to load texture" << std::endl;
+        }
+
+        stbi_image_free(data);
+    }
+
+    // generate from raw data
+    Texture(int _width, int _height, const unsigned char* data, int texture_slot=0)
+    : width(_width), height(_height), texture_slot(glm::max(0,glm::min(15,texture_slot)))
+    {
+        glGenTextures(1, &ID);
+        glBindTexture(GL_TEXTURE_2D, ID);
+
+        // Ustawienie parametrów
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // Użyj CLAMP dla map
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+
+    // activate the shader
+    // ------------------------------------------------------------------------
+    void use() 
+    { 
+        glActiveTexture(GL_TEXTURE0 + texture_slot);
+        glBindTexture(GL_TEXTURE_2D, ID); 
+    }
+
+    void set_boundry_condition(int property) {
+        glBindTexture(GL_TEXTURE_2D, ID);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, property);	
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, property);
+    }
+};
+#endif
+
+
+#ifndef HEIGHTMAP_H
+#define HEIGHTMAP_H
+
+#include "textures/Texture.h"
+#include "settings/Settings.h"
+
+class Heightmap
+{
+public:
+    Texture height_data;
+    float min_height, max_height, scale, water_level_height;
+    const char* map_name;
+
+    Heightmap(Texture height_data, float min_height, float max_height, float scale, const char* map_name = "Default Heightmap")
+        : height_data(height_data), min_height(min_height), max_height(max_height), scale(scale), water_level_height(WATER_LEVEL_HEIGHT_DEFAULT), map_name(map_name)
+    { }
+};
+#endif
+#ifndef ELEVATIONLINEDRAWER_H
+#define ELEVATIONLINEDRAWER_H
+
+#include "textures/Texture.h"
+#include "settings/Settings.h"
+#include "textures/Heightmap.h" 
+#include "world_objects/Line.h"
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <glm/glm.hpp>
+#include <cfloat>
+
+// Helper for high-precision math
+#define PI 3.14159265359f
+
+class ElevationLineDrawer
+{
+private:
+    Heightmap hm;
+    unsigned char* height_data;
+    int hmap_width, hmap_height;
+    bool height_data_loaded = false;
+
+    // Cache the full valid contour path for the current drawing session
+    std::vector<glm::vec3> cached_full_path; 
+
+public:
+    ElevationLineDrawer(Heightmap heightmap) : hm(heightmap) {
+        stbi_set_flip_vertically_on_load(true); 
+        int width, height, nrChannels;
+        height_data = stbi_load(hm.height_data.texturePath, &width, &height, &nrChannels, 1);
+        hmap_width = width; hmap_height = height;
+
+        if (!height_data) {
+            std::cerr << "ERROR: Failed to load heightmap data." << std::endl;
+        } else {
+            height_data_loaded = true;
+        }
+    }
+
+    ~ElevationLineDrawer() {
+        if (height_data_loaded && height_data) {
+            stbi_image_free(height_data);
+        }
+    }
+
+    // --- Core Algorithm ---
+    
+    // Trace a single direction (used internally)
+    void trace_single_direction(glm::vec2 start_pixels, float grade, float max_dist_pixels, bool reverse_polarity, std::vector<glm::vec3>& out_path) {
+        glm::vec2 current_pos = start_pixels;
+        float current_dist = 0.f;
+        glm::vec2 last_dir = glm::vec2(0,0);
+        float step_size = 1.0f; // Step in pixels
+
+        while (current_dist < max_dist_pixels) {
+            // 1. Get Gradient
+            glm::vec2 gradient = get_gradient_sobel(current_pos);
+            if (glm::length(gradient) < 0.0001f) gradient = glm::vec2(0, 1);
+            else gradient = glm::normalize(gradient);
+
+            // 2. Contour Vector (Perpendicular). 
+            glm::vec2 contour_dir = reverse_polarity ? glm::vec2(gradient.y, -gradient.x) : glm::vec2(-gradient.y, gradient.x);
+
+            // 3. Apply Grade
+            float angle = std::atan(grade); 
+            glm::vec2 move_dir = contour_dir * std::cos(angle) + gradient * std::sin(angle);
+            move_dir = glm::normalize(move_dir);
+
+            // 4. Continuity check
+            if (out_path.size() > 1 && glm::length(last_dir) > 0 && glm::dot(move_dir, last_dir) < 0) {
+                 break; 
+            }
+
+            // 5. Step
+            current_pos += move_dir * step_size;
+
+            // Bounds check (keep slightly inside to avoid bilinear sampling errors)
+            if (current_pos.x < 1.0f || current_pos.x >= hmap_width - 1.0f || 
+                current_pos.y < 1.0f || current_pos.y >= hmap_height - 1.0f) break;
+
+            out_path.push_back(pixel_to_local(current_pos));
+            
+            last_dir = move_dir;
+            current_dist += step_size;
+        }
+    }
+
+    // Generates a bidirectional path centered at start_pos_local
+    std::vector<glm::vec3> generate_bidirectional_path(glm::vec3 start_pos_local, float grade, float max_length_pixels) {
+        std::vector<glm::vec3> full_path;
+        
+        // Ensure start pos is clamped to local bounds [-0.5, 0.5] before converting to pixels
+        start_pos_local.x = glm::clamp(start_pos_local.x, -0.5f, 0.5f);
+        start_pos_local.y = glm::clamp(start_pos_local.y, -0.5f, 0.5f);
+
+        glm::vec2 start_pixels = local_to_pixel(start_pos_local);
+
+        // 1. Trace "Forward" 
+        std::vector<glm::vec3> path_fwd;
+        trace_single_direction(start_pixels, grade, max_length_pixels, false, path_fwd);
+
+        // 2. Trace "Backward" 
+        std::vector<glm::vec3> path_bwd;
+        trace_single_direction(start_pixels, grade, max_length_pixels, true, path_bwd);
+
+        // 3. Merge: [Reversed Backward] -> [Start] -> [Forward]
+        std::reverse(path_bwd.begin(), path_bwd.end());
+        
+        full_path.insert(full_path.end(), path_bwd.begin(), path_bwd.end());
+        full_path.push_back(start_pos_local); // Explicitly add the exact start point
+        full_path.insert(full_path.end(), path_fwd.begin(), path_fwd.end());
+
+        return full_path;
+    }
+
+    std::vector<glm::vec3> get_active_path_segment(glm::vec3 start_pos_local, glm::vec3 cursor_pos_local, float grade = 0.f, bool force_recalc = false) {
+        
+        // Recalculate the "Rail" if needed
+        if (cached_full_path.empty() || force_recalc) {
+            // Approx 1000 pixels length trace
+            cached_full_path = generate_bidirectional_path(start_pos_local, grade, 2000.f); 
+        }
+
+        if (cached_full_path.empty()) return {};
+
+        // Find indices in the cached path
+        float min_dist_cursor = FLT_MAX;
+        float min_dist_start = FLT_MAX;
+        int closest_idx = -1;
+        int start_idx = -1;
+
+        for(int i=0; i<cached_full_path.size(); i++) {
+            float d_cursor = glm::distance(cached_full_path[i], cursor_pos_local);
+            if (d_cursor < min_dist_cursor) { min_dist_cursor = d_cursor; closest_idx = i; }
+
+            // Re-find start index (it's in the middle of the array)
+            float d_start = glm::distance(cached_full_path[i], start_pos_local);
+            if (d_start < min_dist_start) { min_dist_start = d_start; start_idx = i; }
+        }
+
+        std::vector<glm::vec3> segment;
+        if (start_idx == -1 || closest_idx == -1) return segment;
+
+        // Extract segment
+        if (start_idx <= closest_idx) {
+            for (int i = start_idx; i <= closest_idx; i++) segment.push_back(cached_full_path[i]);
+        } else {
+            for (int i = start_idx; i >= closest_idx; i--) segment.push_back(cached_full_path[i]);
+        }
+
+        return segment;
+    }
+
+    void clear_cache() {
+        cached_full_path.clear();
+    }
+    
+    // --- Public access for Terrain class ---
+    // Returns LOCAL position [-0.5, 0.5] relative to plane center
+    glm::vec3 get_local_pos_from_uv(float u, float v) {
+        float px = u * hmap_width;
+        float py = v * hmap_height;
+        return pixel_to_local(glm::vec2(px, py));
+    }
+
+private:
+    // --- Helpers ---
+
+    float get_height_bilinear(float x, float y) {
+        int x0 = (int)x; int y0 = (int)y;
+        int x1 = std::min(x0 + 1, hmap_width - 1);
+        int y1 = std::min(y0 + 1, hmap_height - 1);
+        float sx = x - (float)x0;
+        float sy = y - (float)y0;
+        float h00 = get_raw_height(x0, y0);
+        float h10 = get_raw_height(x1, y0);
+        float h01 = get_raw_height(x0, y1);
+        float h11 = get_raw_height(x1, y1);
+        float h0 = glm::mix(h00, h10, sx);
+        float h1 = glm::mix(h01, h11, sx);
+        return glm::mix(h0, h1, sy);
+    }
+
+    float get_raw_height(int x, int y) {
+        if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) return 0.0f;
+        return (float)height_data[y * hmap_width + x] / 255.0f;
+    }
+
+    glm::vec2 get_gradient_sobel(glm::vec2 pos) {
+        float h_l = get_height_bilinear(pos.x - 1, pos.y);
+        float h_r = get_height_bilinear(pos.x + 1, pos.y);
+        float h_d = get_height_bilinear(pos.x, pos.y - 1);
+        float h_u = get_height_bilinear(pos.x, pos.y + 1);
+        return glm::vec2(h_r - h_l, h_u - h_d);
+    }
+
+    glm::vec2 local_to_pixel(glm::vec3 local_pos) {
+        // Map [-0.5, 0.5] to [0, width]
+        float x_norm = (local_pos.x) + 0.5f; 
+        float y_norm = (local_pos.y) + 0.5f;
+        return glm::vec2(x_norm * hmap_width, y_norm * hmap_height);
+    }
+
+    glm::vec3 pixel_to_local(glm::vec2 pixel_pos) {
+        float x_norm = pixel_pos.x / (float)hmap_width;
+        float y_norm = pixel_pos.y / (float)hmap_height;
+        
+        // Sample height (0.0 to 1.0)
+        float height_norm = get_height_bilinear(pixel_pos.x, pixel_pos.y);
+        
+        // Map 0-1 back to Local Plane Coordinates [-0.5, 0.5]
+        float x_local = x_norm - 0.5f;
+        float y_local = y_norm - 0.5f;
+        
+        // IMPORTANT: We do NOT multiply by World Scale here if the object is a child of the terrain.
+        // We only multiply by the heightmap intensity scale relative to the plane width.
+        // Assuming hm.scale represents the Z-height relative to a unit plane:
+        float z_local = height_norm * hm.scale; 
+
+        return glm::vec3(x_local, y_local, z_local);
+    }
+};
+
+#endif
+#ifndef SHADERMANAGER_H
+#define SHADERMANAGER_H
+
+#include "shaders/Shader.h"
+#include "shaders/ShaderData.h"
+#include "textures/TextureData.h"
+#include "textures/Heightmap.h"
+#include <glm/glm.hpp>
+
+class ShaderManager {
+public:
+    static Shader& get_default_world_shader(Texture tex = TEXTURE_MISSING) {
+        static Shader shader = Shader(VERTEX_BASIC_PATH, FRAGMENT_BASIC_PATH);
+        shader.setTexture( tex );
+        return shader;
+    }
+
+    static Shader& get_terrain_shader(Heightmap heightmap = HEIGHTMAP0, Texture texture = TEXTURE_MISSING) {
+        static Shader shader = Shader(VERTEX_TERRAIN_PATH, FRAGMENT_TERRAIN_PATH);
+        shader.setTexture( texture );
+        shader.setHeightmap( heightmap );
+        return shader;
+    }
+
+    static Shader& get_line_shader(glm::vec3 line_colour) {
+        static Shader shader = Shader(VERTEX_LINE_PATH, FRAGMENT_LINE_PATH);
+        shader.setVec3("lineColor", line_colour );
+        return shader;
+    }
+    
+    static Shader& get_default_ui_shader() {
+        static Shader shader = Shader(VERTEX_UI_PATH, FRAGMENT_UI_PATH);
+        return shader;
+    }
+
+    static Shader& get_basic_colour_shader() {
+        static Shader shader = Shader(VERTEX_BASIC_PATH, FRAGMENT_SIMPLE_COLOUR_PATH);
+        return shader;
+    }
+};
+
+#endif // SHADERMANAGER_H
+
+ 
+#define VERTEX_BASIC_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/vertex_shaders/vertexBasic.vs"
+#define FRAGMENT_BASIC_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentBasic.fs"
+
+#define VERTEX_TERRAIN_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/vertex_shaders/vertexTerrain.vs"
+#define FRAGMENT_TERRAIN_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentContourMap.fs"
+
+#define VERTEX_LINE_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/vertex_shaders/vertexLine.vs"
+#define FRAGMENT_LINE_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentLine.fs"
+
+#define VERTEX_UI_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/vertex_shaders/vertexUI.vs"
+#define FRAGMENT_UI_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentUI.fs"
+
+#define FRAGMENT_SIMPLE_COLOUR_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentSimpleColour.fs"
+
+
+#ifndef SHADER_H
+#define SHADER_H
+
+#include <glad/glad.h>
+
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "textures/Texture.h"
+#include "textures/TextureData.h"
+#include "textures/Heightmap.h"
+#include "settings/Settings.h"
+
+class Shader
+{
+public:
+    unsigned int ID;
+    Texture tex;
+    Heightmap heightmap;
+
+    std::vector<Texture> textures;
+
+    bool heightmap_enabled;
+    bool uses_texture = false;
+
+    // --- In your renderer's header file or as global variables ---
+    GLuint worldPosFBO;         // The FBO that will hold our world position data
+    GLuint worldPosTexture;     // The texture attached to the FBO
+    GLuint worldPosDepthRBO;    // A depth buffer for the FBO
+
+
+    // constructor generates the shader on the fly
+    // ------------------------------------------------------------------------
+    Shader(const char* vertexPath, const char* fragmentPath) 
+        : tex(TEXTURE_MISSING), heightmap(HEIGHTMAP0), heightmap_enabled(false)
+    {
+        // 1. retrieve the vertex/fragment source code from filePath
+        std::string vertexCode;
+        std::string fragmentCode;
+        std::ifstream vShaderFile;
+        std::ifstream fShaderFile;
+        // ensure ifstream objects can throw exceptions:
+        vShaderFile.exceptions (std::ifstream::failbit | std::ifstream::badbit);
+        fShaderFile.exceptions (std::ifstream::failbit | std::ifstream::badbit);
+        try 
+        {
+            // open files
+            vShaderFile.open(vertexPath);
+            fShaderFile.open(fragmentPath);
+            std::stringstream vShaderStream, fShaderStream;
+            // read file's buffer contents into streams
+            vShaderStream << vShaderFile.rdbuf();
+            fShaderStream << fShaderFile.rdbuf();
+            // close file handlers
+            vShaderFile.close();
+            fShaderFile.close();
+            // convert stream into string
+            vertexCode   = vShaderStream.str();
+            fragmentCode = fShaderStream.str();
+        }
+        catch (std::ifstream::failure& e)
+        {
+            std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+        }
+        const char* vShaderCode = vertexCode.c_str();
+        const char * fShaderCode = fragmentCode.c_str();
+        // 2. compile shaders
+        unsigned int vertex, fragment;
+        // vertex shader
+        vertex = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vertex, 1, &vShaderCode, NULL);
+        glCompileShader(vertex);
+        checkCompileErrors(vertex, "VERTEX");
+        // fragment Shader
+        fragment = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fragment, 1, &fShaderCode, NULL);
+        glCompileShader(fragment);
+        checkCompileErrors(fragment, "FRAGMENT");
+        // shader Program
+        ID = glCreateProgram();
+        glAttachShader(ID, vertex);
+        glAttachShader(ID, fragment);
+        glLinkProgram(ID);
+        checkCompileErrors(ID, "PROGRAM");
+        // delete the shaders as they're linked into our program now and no longer necessary
+        glDeleteShader(vertex);
+        glDeleteShader(fragment);
+
+        // set texture units
+        use();
+        setInt("texture", 0);
+        setInt("heightmap", 1);
+    }
+    // activate the shader
+    // ------------------------------------------------------------------------
+    void use() 
+    { 
+        glUseProgram(ID); 
+
+        if (uses_texture) tex.use();
+        if (heightmap_enabled) heightmap.height_data.use();
+
+        for (int i=0; i<textures.size(); i++) textures[i].use();
+    }
+    // utility uniform functions
+    // ------------------------------------------------------------------------
+    void setBool(const std::string &name, bool value) const
+    {         
+        glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value); 
+    }
+    // ------------------------------------------------------------------------
+    void setInt(const std::string &name, int value) const
+    { 
+        glUniform1i(glGetUniformLocation(ID, name.c_str()), value); 
+    }
+    // ------------------------------------------------------------------------
+    void setFloat(const std::string &name, float value) const
+    { 
+        glUniform1f(glGetUniformLocation(ID, name.c_str()), value); 
+    }
+    void setVec2(const std::string &name, const glm::vec2 &value) const
+    { 
+        glUniform2fv(glGetUniformLocation(ID, name.c_str()), 1, glm::value_ptr(value)); 
+    }
+    void setVec3(const std::string &name, const glm::vec3 &value) const
+    { 
+        glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, glm::value_ptr(value)); 
+    }
+    void setVec4(const std::string &name, const glm::vec4&value) const
+    { 
+        glUniform4fv(glGetUniformLocation(ID, name.c_str()), 1, glm::value_ptr(value)); 
+    }
+    void setMatrix(const std::string &name, glm::mat4 matrix){
+        unsigned int loc = glGetUniformLocation(ID, name.c_str());
+        glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(matrix));
+    }
+    void setTexture( Texture tex){
+        uses_texture = true;
+        if (tex.texture_slot == 0) {
+            this->tex = tex;
+        } else {
+            textures.push_back(tex);
+        }
+
+    }
+    void setHeightmap( Heightmap hmap) {
+        use();
+        setBool("heightmap_enabled", true);
+        setFloat("heightmap_scale", hmap.scale);
+        heightmap_enabled = true;
+        hmap.height_data.texture_slot = 1;
+        this->heightmap = hmap;
+    }
+
+    void config_worldpos_buffer() {
+        // 2. Create the Framebuffer Object (FBO)
+        glGenFramebuffers(1, &worldPosFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, worldPosFBO);
+
+        // 3. Create the World Position texture (the FBO's color buffer)
+        glGenTextures(1, &worldPosTexture);
+        glBindTexture(GL_TEXTURE_2D, worldPosTexture);
+        // **IMPORTANT:** Use a high-precision format! GL_RGB32F stores 3 floats (x, y, z).
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        // Attach this texture to the FBO
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, worldPosTexture, 0);
+
+        // 4. Create a Renderbuffer Object (RBO) for depth testing
+        glGenRenderbuffers(1, &worldPosDepthRBO);
+        glBindRenderbuffer(GL_RENDERBUFFER, worldPosDepthRBO);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, SCR_WIDTH, SCR_HEIGHT);
+        // Attach this RBO to the FBO
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, worldPosDepthRBO);
+
+        // 5. Check if the FBO is complete
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+        }
+
+        // 6. Unbind the FBO so we render to the main screen by default
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void bind_world_pos_buffer () {
+        use();
+        setBool("u_renderWorldPos", false);
+        glActiveTexture(GL_TEXTURE15);
+        glBindTexture(GL_TEXTURE_2D, worldPosTexture);
+        setInt("world_pos_texture", 15);
+    }
+    void render_to_world_pos_buffer() {
+        use();
+        setBool("u_renderWorldPos", true);
+    }
+    void send_mouse_position(glm::vec2 mouse_pos, float inner_raduis, float outer_radius) {
+        setVec2("u_mouseCoords", mouse_pos);
+        setFloat("u_circleInnerRadius", inner_raduis);  
+        setFloat("u_circleOuterRadius", outer_radius);
+    }
+
+private:
+    // utility function for checking shader compilation/linking errors.
+    // ------------------------------------------------------------------------
+    void checkCompileErrors(unsigned int shader, std::string type)
+    {
+        int success;
+        char infoLog[1024];
+        if (type != "PROGRAM")
+        {
+            glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+            if (!success)
+            {
+                glGetShaderInfoLog(shader, 1024, NULL, infoLog);
+                std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n" << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+            }
+        }
+        else
+        {
+            glGetProgramiv(shader, GL_LINK_STATUS, &success);
+            if (!success)
+            {
+                glGetProgramInfoLog(shader, 1024, NULL, infoLog);
+                std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n" << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+            }
+        }
+    }
+};
+#endif
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aTexCoord;
+  
+out vec2 TexCoord;
+out vec3 v_worldPos;
+
+uniform mat4 transform;
+uniform mat4 view;
+uniform mat4 projection;
+
+uniform sampler2D heightmap;
+uniform bool heightmap_enabled;
+uniform float heightmap_scale;
+
+void main()
+{
+    vec3 position = aPos;
+    
+    if (heightmap_enabled) { 
+        float height = texture(heightmap, aTexCoord).x; // Używamy aTexCoord!
+        height = height * heightmap_scale; 
+        position.z = height; // Ustaw pozycję Z wierzchołka
+    } 
+
+    v_worldPos = (transform * vec4(position, 1.0)).xyz;
+    gl_Position = projection * view * vec4(v_worldPos, 1.0f);
+    TexCoord = aTexCoord;
+}
+#version 330 core
+
+out vec4 FragColor;
+in vec2 TexCoord;
+uniform sampler2D Texture;
+uniform bool useTexture = false;
+
+uniform vec4 colour;
+
+
+void main()
+{
+    if (useTexture) {
+        FragColor = texture(Texture, TexCoord);
+    }
+    else {
+        FragColor = colour;
+    }
+}
+
+
+// window defs
+#define SCR_DECREASE_MULT 0.7
+#define SCR_WIDTH 1920 * SCR_DECREASE_MULT
+#define SCR_HEIGHT 1080 * SCR_DECREASE_MULT
+#define WINDOW_TITLE "Layer Trains"
+
+// palette
+#define RENDER_BACKGROUND_COLOUR 132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f
+
+// camera
+#define CAMERA_FOV 55.f
+#define CAMERA_NEAR_CLIP_PLANE 0.01f
+#define CAMERA_FAR_CLIP_PLANE 100.f
+
+#define CAMERA_ZOOM_SPEED 0.1f
+#define CAMERA_PAN_SPEED 35.f
+#define CAMERA_SHIFT_SPEED_MULTIPLIER 2.5f
+
+// CONTOUR MAP
+
+// contour lines
+#define CONTOUR_LINE_MINOR_THICKNESS .003f
+#define CONTOUR_LINE_MINOR_SPACING 100.f // spacing of minor contouor lines in [m]
+#define CONTOUR_LINE_MAJOR_THICKNESS_MULTIPLER 3.f 
+#define CONTOUR_LINE_MAJOR_FREQUENCY 10 // every x minors there is a major
+#define CONTOUR_LINE_COLOUR glm::vec3(0.0f)
+#define CONTOUR_LINE_HEGHT_OFFSET V3_Z * 0.0025f
+#define CONTOUR_LINE_SCALING 1.01f
+
+// contour map elevation data
+#define ELEVATION_GRADIENT_MAX_HEIGHT 2500.f
+#define ELEVATION_GRADIENT_STRENGTH .82f
+#define STEEPNESS_SCALE 50.f
+#define STEEPNESS_SMOOTHING_STEP_SIZE 1
+
+#define OVERWRITE_CACHED_TEXTURES false
+
+#define WATER_LEVEL_HEIGHT_DEFAULT 65.f
+
+#define CURSOR_INNER_RADIUS 0.01f
+#define CURSOR_OUTER_RADIUS 0.02f
+#define CONTOUR_LINE_TOLERANCE 0.01f
+
+#define LINE_THICKNESS 5.f
+
+#define NEW_LINE_SEGMENT_V2 vec2(-10000.f, -10000.f)
+#define NEW_LINE_SEGMENT_V3 vec3(-10000.f, -10000.f, -10000.f)
+
+#define CONTOUR_LINE_MAX_DISTANCE_BTW_POINTS 0.025f
+
+#define CALDEA_FONT "C:/Media/Creations/Documents/Fonts/Caladea/Caladea-Regular.ttf"
+#define DOXANA_FONT "C:/Media/Creations/Documents/Fonts/Doxana - Font/DoxanaDigital.ttf"
+#define DEFAULT_FONT CALDEA_FONT
+//#define DEFAULT_FONT "C:/Windows/Fonts/DoxanaDigital-Regular.ttf"
+
+#define INTERACTABLE_OBJECT_ALPHA 0.1f
+#define INTERACTABLE_DEFUALT_COLOUR Colour::WHITE
+#define INTERACTABLE_RENDER_RADUIS_MUTLIPLIER 0.75f
+#define INTERACTABLE_HIGHLIGHTED_COLOUR Colour::GREY
+#define INTERACTABLE_HIGHLIGHTED_OBJECT_ALPHA INTERACTABLE_OBJECT_ALPHA*1.f
+#define INTERACTABLE_INTERACT_DISTANCE 0.015f
+
+#ifndef COLOURDATA_H
+#define COLOURDATA_H
+
+#include <glm/glm.hpp>
+
+// Używamy namespace Colour, aby uniknąć kolizji nazw.
+// Wszystkie kolory są w formacie RGBA (czerwony, zielony, niebieski, alfa).
+// Wartości są w zakresie [0.0, 1.0].
+namespace Colour {
+    using glm::vec4;
+
+    // --- Podstawowe kolory ---
+    const vec4 WHITE      = vec4(1.0f, 1.0f, 1.0f, 1.0f); // Biały
+    const vec4 BLACK      = vec4(0.0f, 0.0f, 0.0f, 1.0f); // Czarny
+    const vec4 RED        = vec4(1.0f, 0.0f, 0.0f, 1.0f); // Czerwony
+    const vec4 GREEN      = vec4(0.0f, 1.0f, 0.0f, 1.0f); // Zielony
+    const vec4 BLUE       = vec4(0.0f, 0.0f, 1.0f, 1.0f); // Niebieski
+    const vec4 YELLOW     = vec4(1.0f, 1.0f, 0.0f, 1.0f); // Żółty (Red + Green)
+    const vec4 CYAN       = vec4(0.0f, 1.0f, 1.0f, 1.0f); // Cyjan (Green + Blue)
+    const vec4 MAGENTA    = vec4(1.0f, 0.0f, 1.0f, 1.0f); // Magenta (Red + Blue)
+    const vec4 TRANSPARENT= vec4(0.0f, 0.0f, 0.0f, 0.0f); // W pełni przezroczysty
+
+    // --- Odcienie szarości ---
+    const vec4 GREY       = vec4(0.5f, 0.5f, 0.5f, 1.0f); // Szary
+    const vec4 LIGHT_GREY = vec4(0.75f, 0.75f, 0.75f, 1.0f); // Jasnoszary
+    const vec4 DARK_GREY  = vec4(0.25f, 0.25f, 0.25f, 1.0f); // Ciemnoszary
+
+    // --- Kolory UI / Webowe ---
+    const vec4 ORANGE     = vec4(1.0f, 0.5f, 0.0f, 1.0f); // Pomarańczowy
+    const vec4 PURPLE     = vec4(0.5f, 0.0f, 0.5f, 1.0f); // Fioletowy
+    const vec4 PINK       = vec4(1.0f, 0.4f, 0.7f, 1.0f); // Różowy
+    const vec4 GOLD       = vec4(1.0f, 0.84f, 0.0f, 1.0f); // Złoty
+    const vec4 SKY_BLUE   = vec4(0.53f, 0.81f, 0.98f, 1.0f); // Błękitny
+}
+
+#endif // COLOURDATA_H
+
+
+
+#ifndef WINDOW_H
+#define WINDOW_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <iostream>
+#include <math.h>
+#include "world_objects/Cube.h"
+#include "world_objects/Object.h"
+#include "world_objects/Plane.h"
+#include "world_objects/World.h"
+#include "shaders/Shader.h"
+#include "shaders/ShaderManager.h"
+#include "settings/Settings.h"
+#include "settings/Utility.h"
+#include "rendering/Camera.h"
+#include "user_interaction/InputHandler.h"
+#include "textures/Texture.h"
+#include "world_objects/Terrain.h"
+#include "world_objects/Line.h"
+#include "Panel.h"
+#include "Sphere.h"
+#include "Interactable.h"
+#include "InteractableManager.h"
+#include "Text.h"
+#include "ScreenUI.h"
+#include "settings/ColourData.h"
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+
+class Window
+{
+public:
+    unsigned int scr_width;
+    unsigned int scr_height;
+    std::string window_title;
+    GLFWwindow* window;
+
+    Window(int scr_width, int scr_height, const char* window_title)
+        : scr_width(scr_width), scr_height(scr_height), window_title(window_title)
+    {
+    }
+
+    void initGLFW() {
+        glfwInit();
+
+        // select OpenGL version 3.3
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+
+        // select OpenGL Core Profile
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+        // enable backface culling
+        //glEnable(GL_DEPTH_TEST)
+        //glEnable(GL_CULL_FACE);
+        //glFrontFace(GL_CCW);
+    }
+
+    bool create() {
+        this->window = glfwCreateWindow(this->scr_width, this->scr_height, this->window_title.c_str(), NULL, NULL);
+
+        if (this->window == NULL) {
+            std::cout << "Failed to create GLFW window" << std::endl;
+            glfwTerminate();
+            return false;
+        }
+
+        glfwMakeContextCurrent(window);
+
+        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+            std::cout << "Failed to initialize GLAD" << std::endl;
+            return false;
+        }
+
+        glfwSetFramebufferSizeCallback(window, Window::framebuffer_size_callback);
+
+        glEnable(GL_DEPTH_TEST);
+
+        return true;
+    }
+
+    GLFWwindow* get() {
+        return this->window;
+    }
+
+    void display_start() {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    void display(){
+        glfwSwapBuffers(this->window);
+        glfwPollEvents();
+    }
+
+    void clear(float r=0.0f, float b=0.0f, float g=0.0f, float a=1.0f) {
+        glClearColor(r,g,b,a);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+    bool open() {
+        return !glfwWindowShouldClose(this->window);
+    }
+
+private:
+    static void framebuffer_size_callback(GLFWwindow* window, int width, int height){
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+    }
+};
+#endif
+
+#ifndef CAMERA_H
+#define CAMERA_H
+
+#include "world_objects/Object.h" // The base class for all renderable entities
+#include "shaders/Shader.h" // The base class for all renderable entities
+#include <vector>
+#include <memory>   // Required for std::unique_ptr
+#include <glm/glm.hpp>
+
+using namespace glm;
+
+enum class ProjectionType {
+    Perspective, Orthographic, Screenspace
+};
+
+
+class Camera {
+public:
+    vec3 position;
+    float screen_width, screen_height, fov, near_clip, far_clip;
+    std::vector<Shader*> dependent_shaders;
+    std::vector<ProjectionType> dependent_shaders_perspective_type; // each shader can be ortho or perspective
+    float orthographic_zoom = 2.f;
+
+    Camera (float screen_width, float screen_height,
+        float camera_offset_z = -3.f, float fov = 45.f, float near_clip = 0.1f, float far_clip=100.f) 
+        : screen_width(screen_width), screen_height(screen_height),
+        fov(fov), position(vec3(0.f,0.f,camera_offset_z)), near_clip(near_clip), 
+        far_clip(far_clip) {}
+
+    void set_perspective(Shader *shader, bool add_dependancy = true) { 
+        shader->use();
+        
+        glm::mat4 projection;
+        projection = glm::perspective(glm::radians(fov), screen_width/screen_height, near_clip, far_clip);
+        shader->setMatrix("projection", projection);
+        
+        glm::mat4 view = glm::mat4(1.0f);
+        view = glm::translate(view, -position); // camera movement is just moving the scene in opposite dir
+        shader->setMatrix("view", view);
+        
+        if (add_dependancy) {
+            dependent_shaders.push_back(shader);
+            dependent_shaders_perspective_type.push_back(ProjectionType::Perspective);
+        }
+    }
+    
+    void set_orthographic(Shader *shader, bool add_dependancy = true) {
+        shader->use();
+
+        // 1. Obliczamy granice projekcji, wyśrodkowane wokół (0, 0)
+        float aspect_ratio = screen_width / screen_height;
+        
+        // Używamy orthographic_zoom do określenia jednostek świata, które mają być widoczne
+        float ortho_width = orthographic_zoom * aspect_ratio;
+        float ortho_height = orthographic_zoom;
+
+        glm::mat4 projection;
+        // Ustawiamy symetryczne granice: od -W/2 do +W/2, od -H/2 do +H/2
+        projection = glm::ortho(
+            -ortho_width / 2.0f, ortho_width / 2.0f, 
+            -ortho_height / 2.0f, ortho_height / 2.0f, 
+            near_clip, far_clip);
+            
+        shader->setMatrix("projection", projection);
+
+        // 2. Macierz widoku (translacja kamery)
+        glm::mat4 view = glm::mat4(1.0f);
+        view = glm::translate(view, -position); 
+        shader->setMatrix("view", view);
+
+        if (add_dependancy) {
+            dependent_shaders.push_back(shader);
+            dependent_shaders_perspective_type.push_back(ProjectionType::Orthographic);
+        }
+    }
+    
+    void set_screenspace(Shader *shader, bool add_dependancy = true) {
+        shader->use();
+
+        glm::mat4 projection;
+        projection = glm::ortho(
+            0.f, screen_width,
+            0.f, screen_height,
+            near_clip, far_clip
+        );
+            
+        shader->setMatrix("projection", projection);
+
+        // 2. Macierz widoku (translacja kamery)
+        glm::mat4 view = glm::mat4(1.0f);
+        view = glm::translate(view, -position); 
+        shader->setMatrix("view", view);
+
+        if (add_dependancy) {
+            dependent_shaders.push_back(shader);
+            dependent_shaders_perspective_type.push_back(ProjectionType::Screenspace);
+        }
+    }
+
+    void set_wireframe() {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    }
+
+    void mv(vec3 mv) {
+        position += mv;
+    }
+
+    void set_orthographic_zoom (float zoom) {
+        orthographic_zoom = glm::clamp(zoom, 0.01f, 1000.f);
+        update_dependent_shaders(ProjectionType::Orthographic);
+    }
+    void set_fov (float new_fov) {
+        fov = glm::clamp(new_fov, 0.01f, 180.f);
+        update_dependent_shaders(ProjectionType::Screenspace);
+    }
+
+    void set_screen_size(float width, float height) {
+        screen_width = width;
+        screen_height = height;
+        update_dependent_shaders(ProjectionType::Screenspace);
+    }
+
+private:
+    void update_dependent_shaders (ProjectionType projection_type) {
+        for (int i=0; i<dependent_shaders.size(); i++) {
+            if (dependent_shaders_perspective_type[i] == projection_type) {
+                switch (projection_type) {
+                    case ProjectionType::Perspective: set_perspective(dependent_shaders[i], false); break;
+                    case ProjectionType::Orthographic: set_orthographic(dependent_shaders[i], false); break;
+                    case ProjectionType::Screenspace: set_screenspace(dependent_shaders[i], false); break;
+                }
+            }
+        }
+    }
+};
+
+#endif // CAMERA_H

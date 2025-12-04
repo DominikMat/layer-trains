@@ -1,0 +1,20 @@
+{
+    "cmake.generator": "Visual Studio 17 2022",
+    "cmake.toolchain": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureSettings": {
+        "CMAKE_BUILD_TYPE": "Debug"
+    },
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.configureOnOpen": true,
+    "cmake.buildOnSave": false,
+    "cmake.clearOutputBeforeBuild": true,
+    "cmake.installPrefix": "${workspaceFolder}/install",
+    "files.associations": {
+        "*.dbclient-js": "javascript",
+        "*.sqlbook": "sql",
+        "*.ndjson": "jsonl",
+        "*.rmd": "markdown",
+        "vector": "cpp"
+    }
+}

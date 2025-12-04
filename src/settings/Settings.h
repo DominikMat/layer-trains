@@ -1,0 +1,62 @@
+
+// window defs
+#define SCR_DECREASE_MULT 0.7
+#define SCR_WIDTH 1920 * SCR_DECREASE_MULT
+#define SCR_HEIGHT 1080 * SCR_DECREASE_MULT
+#define WINDOW_TITLE "Layer Trains"
+
+// palette
+#define RENDER_BACKGROUND_COLOUR 132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f
+
+// camera
+#define CAMERA_FOV 55.f
+#define CAMERA_NEAR_CLIP_PLANE 0.01f
+#define CAMERA_FAR_CLIP_PLANE 100.f
+
+#define CAMERA_ZOOM_SPEED 0.1f
+#define CAMERA_PAN_SPEED 35.f
+#define CAMERA_SHIFT_SPEED_MULTIPLIER 2.5f
+
+// CONTOUR MAP
+
+// contour lines
+#define CONTOUR_LINE_MINOR_THICKNESS .003f
+#define CONTOUR_LINE_MINOR_SPACING 100.f // spacing of minor contouor lines in [m]
+#define CONTOUR_LINE_MAJOR_THICKNESS_MULTIPLER 3.f 
+#define CONTOUR_LINE_MAJOR_FREQUENCY 10 // every x minors there is a major
+#define CONTOUR_LINE_COLOUR glm::vec3(0.0f)
+#define CONTOUR_LINE_HEGHT_OFFSET V3_Z * 0.0025f
+#define CONTOUR_LINE_SCALING 1.01f
+
+// contour map elevation data
+#define ELEVATION_GRADIENT_MAX_HEIGHT 2500.f
+#define ELEVATION_GRADIENT_STRENGTH .82f
+#define STEEPNESS_SCALE 50.f
+#define STEEPNESS_SMOOTHING_STEP_SIZE 1
+
+#define OVERWRITE_CACHED_TEXTURES false
+
+#define WATER_LEVEL_HEIGHT_DEFAULT 65.f
+
+#define CURSOR_INNER_RADIUS 0.01f
+#define CURSOR_OUTER_RADIUS 0.02f
+#define CONTOUR_LINE_TOLERANCE 0.01f
+
+#define LINE_THICKNESS 5.f
+
+#define NEW_LINE_SEGMENT_V2 vec2(-10000.f, -10000.f)
+#define NEW_LINE_SEGMENT_V3 vec3(-10000.f, -10000.f, -10000.f)
+
+#define CONTOUR_LINE_MAX_DISTANCE_BTW_POINTS 0.025f
+
+#define CALDEA_FONT "C:/Media/Creations/Documents/Fonts/Caladea/Caladea-Regular.ttf"
+#define DOXANA_FONT "C:/Media/Creations/Documents/Fonts/Doxana - Font/DoxanaDigital.ttf"
+#define DEFAULT_FONT CALDEA_FONT
+//#define DEFAULT_FONT "C:/Windows/Fonts/DoxanaDigital-Regular.ttf"
+
+#define INTERACTABLE_OBJECT_ALPHA 0.1f
+#define INTERACTABLE_DEFUALT_COLOUR Colour::WHITE
+#define INTERACTABLE_RENDER_RADUIS_MUTLIPLIER 0.75f
+#define INTERACTABLE_HIGHLIGHTED_COLOUR Colour::GREY
+#define INTERACTABLE_HIGHLIGHTED_OBJECT_ALPHA INTERACTABLE_OBJECT_ALPHA*1.f
+#define INTERACTABLE_INTERACT_DISTANCE 0.015f
