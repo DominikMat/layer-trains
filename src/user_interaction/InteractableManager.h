@@ -29,6 +29,11 @@ public:
             i->process(distance_squared, call_objects_in_range);
         }
     }
+    Interactable* create(vec3 pos, float interact_dist) {
+        Interactable* intr = new Interactable(pos, interact_dist);
+        add(intr);
+        return intr;
+    }
     void add(Interactable* interactable) {
         this->interactables.push_back(interactable);
 

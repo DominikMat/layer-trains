@@ -49,9 +49,9 @@ public:
         // get interactable and name tag positions from painer, attach them to terrain
         vector<vec2> interactable_positions = painter.get_interactable_positions();
         for (vec2 uv : interactable_positions) {
-            Interactable i = Interactable(vec3(0.f),INTERACTABLE_INTERACT_DISTANCE);
-            interactable_manager->add ( &i );
-            attach_to_surface (&i, uv.x, uv.y);
+            Interactable *i = interactable_manager->create ( vec3(0.f),INTERACTABLE_INTERACT_DISTANCE );
+            attach_to_surface (i, uv.x, uv.y);
+            cout << "Interactable detected, attached to surface at: " << uv.x << ", " << uv.y << endl;
         }
 
         // handle shader and camera 

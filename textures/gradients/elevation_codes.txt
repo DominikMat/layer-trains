@@ -13,5 +13,5 @@
 95
 #212121
 
-100
-#ffffff
+
+https://makegradients.app/gradient-app
