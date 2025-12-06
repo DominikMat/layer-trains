@@ -31,6 +31,13 @@ namespace Colour {
     const vec4 PINK       = vec4(1.0f, 0.4f, 0.7f, 1.0f); // Różowy
     const vec4 GOLD       = vec4(1.0f, 0.84f, 0.0f, 1.0f); // Złoty
     const vec4 SKY_BLUE   = vec4(0.53f, 0.81f, 0.98f, 1.0f); // Błękitny
+
+    // --- Dodatkowe ---
+    const vec4 DARK_BROWN = vec4(46/255.f, 26/255.f, 0, 1.f); // Dark brown 'rgba(46, 26, 0, 1)'
+    
+    // --- Palette ---
+    const vec4 TERRAIN_SIDE_COLOUR = vec4(43/255.f, 37/255.f, 29/255.f, 1.f); // greyish brown 'rgba(43, 37, 29, 1)'
+    const vec4 SNOW_COLOUR = vec4(1.f,1.f,1.f,0.75f); // greyish brown 'rgba(180, 180, 180, 1)'
 }
 
 #endif // COLOURDATA_H

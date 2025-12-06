@@ -20,7 +20,7 @@
 
 #define ERROR_EMPTY_TEXTURE_RETURN Texture(1, 1, new unsigned char[3]{0,0,0}, 1)
 
-#define SNOW_COLOUR Colour::WHITE
+#define TERRAIN_BOUNDARY_PIXEL_NUM 2
 
 using namespace glm;
 using namespace std;
@@ -90,6 +90,16 @@ public:
                 int idx = (y * width + x) * 3;
 
                 /* ================================================ */
+                /* COLOUR TERRAIN BOUNDARY  */
+
+                if (y < TERRAIN_BOUNDARY_PIXEL_NUM || x < TERRAIN_BOUNDARY_PIXEL_NUM || x >= width-TERRAIN_BOUNDARY_PIXEL_NUM || y >= height-TERRAIN_BOUNDARY_PIXEL_NUM) {
+                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.r * 255.f);
+                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.g * 255.f);
+                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.b * 255.f);
+                    continue;
+                }
+
+                /* ================================================ */
                 /* ELEVATION AND STEEPNESS COLOURING  */
 
                 // get height at pixel
@@ -126,14 +136,14 @@ public:
                 if (is_above_snow_level) {
 
                     float height_above = pixel_elevation - terrain_data->snow_level_height;
-                    float above_snow_level_mult = height_above / terrain_data->snow_falloff_range;
+                    float above_snow_level_mult = height_above / SNOW_FALLOFF_RANGE;
                     float falloff_ratio = glm::clamp(above_snow_level_mult*above_snow_level_mult, 0.0f, 1.0f);
-                    float allowed_steepness = glm::mix(terrain_data->snow_max_steepness, 1.0f, falloff_ratio);
+                    float allowed_steepness = glm::mix(SNOW_MAX_STEEPNESS, 1.0f, falloff_ratio);
                     
                     if (steepness * STEEPNESS_SCALE < allowed_steepness) {
                         float snow_transition = glm::clamp(height_above / 50.0f, 0.0f, 1.0f); // Smooth transition at the very bottom edge of snow line
                         float snow_opacity = snow_transition; //glm::clamp(snow_transition, 0.f, 1.f);
-                        final_colour = glm::mix(final_colour, vec3(1.f), snow_opacity*0.75f);
+                        final_colour = glm::mix(final_colour, vec3(Colour::SNOW_COLOUR), snow_opacity*Colour::SNOW_COLOUR.a);
                     }
                 }
                 
@@ -141,29 +151,25 @@ public:
                 /* REGION SPECIFIC COLOURING  */
                 
                 // blue region check
-                float pixel_blue_channel = get_pixel(x,y).b;
-                BlueRegions blue_region = ((int)(pixel_blue_channel+1) % 16) == 0 ? (BlueRegions)(int)(pixel_blue_channel) : BlueRegions::BLUE_NONE;
-                if (blue_region == BlueRegions::INTERACTABLE) {
-                    cout << "INTERACTABLE DETECTED" << endl;
-                    interactable_positions.push_back ( vec2((float)x/width,(float)y/height) );
+                if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
+                else {
+                    float pixel_blue_channel = get_pixel(x,y).b;
+                    BlueRegions blue_region = ((int)(pixel_blue_channel+1) % 16) == 0 ? (BlueRegions)(int)(pixel_blue_channel) : BlueRegions::BLUE_NONE;
+                    if (blue_region != BlueRegions::BLUE_NONE) {
+                        vec4 blue_region_colour = get_color_from_map(BLUE_REGION_COLOURS, blue_region);
+                        final_colour = glm::mix(final_colour, vec3(blue_region_colour), BLUE_REGION_OPACITY);
+                    }
+                    else if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
+                    
+                    // green region check
+                    float pixel_green_channel = get_pixel(x,y).g;
+                    GreenRegions green_region = ((int)(pixel_green_channel+1) % 16) == 0 ? (GreenRegions)(int)(pixel_green_channel) : GreenRegions::GREEN_NONE;
+                    if (green_region != GreenRegions::GREEN_NONE) {
+                        vec4 green_region_colour = get_color_from_map(GREEN_REGION_COLOURS, green_region);
+                        final_colour = glm::mix(final_colour, vec3(green_region_colour), GREEN_REGION_OPACITY);
+                    }
                 }
-                else if (blue_region != BlueRegions::BLUE_NONE) {
-                    vec4 blue_region_colour = get_color_from_map(BLUE_REGION_COLOURS, blue_region);
-                    final_colour = glm::mix(final_colour, vec3(blue_region_colour), BLUE_REGION_OPACITY);
-                }
-                else if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
                 
-                // green region check
-                float pixel_green_channel = get_pixel(x,y).g;
-                GreenRegions green_region = ((int)(pixel_green_channel+1) % 16) == 0 ? (GreenRegions)(int)(pixel_green_channel) : GreenRegions::GREEN_NONE;
-                if (green_region == GreenRegions::NAME_TAG) {
-                    name_tag_positions.push_back ( vec2(x/width,y/height) );
-                }
-                else if (green_region != GreenRegions::GREEN_NONE) {
-                    vec4 green_region_colour = get_color_from_map(GREEN_REGION_COLOURS, green_region);
-                    final_colour = glm::mix(final_colour, vec3(green_region_colour), GREEN_REGION_OPACITY);
-                }
-                else if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
                                 
                 // apply final colour
                 color_buffer[idx] = (unsigned char)(final_colour.r * 255.f);

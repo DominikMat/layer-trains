@@ -15,7 +15,7 @@ private:
     vec3 camera_mv;
     bool simulation_paused, was_space_pressed;
     bool holding_shift;
-    float scroll_value;
+    float scroll_value, scroll_speed_multiplier;
     vec2 mouse_position_normalized; // Twoja oryginalna dziwna normalizacja (0-1)
     vec2 mouse_position_pixels;     // Surowe piksele ekranu
     bool was_mouse_pressed, is_mouse_pressed;         // Do wykrywania krawędzi kliknięcia
@@ -27,7 +27,7 @@ public:
     InputHandler() : 
         camera_mv(vec3(0.f)), 
         simulation_paused(false), was_space_pressed(false), 
-        scroll_value(1.0f),
+        scroll_value(1.0f), scroll_speed_multiplier(0.1f),
         was_mouse_pressed(false), is_mouse_pressed(false)
     {
         instance = this;
@@ -67,8 +67,8 @@ public:
         glfwGetCursorPos(w, &xpos, &ypos);
         mouse_position_normalized = vec2((float)(xpos / SCR_WIDTH)*2.f, (0.5f - (float)(ypos / SCR_HEIGHT))*2.f);
         mouse_position_normalized += vec2(0.011f, -0.015f); // offset idk why ???
-        mouse_position_normalized.x = clamp(mouse_position_normalized.x, 0.f, 1.f);
-        mouse_position_normalized.y = clamp(mouse_position_normalized.y, 0.f, 1.f);
+        mouse_position_normalized.x = glm::clamp(mouse_position_normalized.x, 0.f, 1.f);
+        mouse_position_normalized.y = glm::clamp(mouse_position_normalized.y, 0.f, 1.f);
         mouse_position_pixels = vec2(xpos, ypos);
 
         // Wykrywanie kliknięcia - krawędź
@@ -88,8 +88,17 @@ public:
 
     // Metoda do aktualizacji wartości scroll_value (zoom)
     void update_scroll_value(float yoffset) {
-        scroll_value -= yoffset * CAMERA_ZOOM_SPEED; 
-        scroll_value = std::clamp(scroll_value, 0.01f, 2.f);
+        scroll_value -= yoffset * scroll_speed_multiplier; 
+        scroll_value = std::clamp(scroll_value, 0.f, 2.f);
+    }
+    void reset_scroll_value() {
+        scroll_value = 1.f;
+    }
+    void set_scroll_speed(float new_speed) {
+        scroll_speed_multiplier = new_speed;
+    }
+    float get_scroll_speed() {
+        return scroll_speed_multiplier;
     }
 
     vec3 get_camera_movement() { return camera_mv; }

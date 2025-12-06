@@ -24,10 +24,11 @@ private:
     unsigned int VBO;
     unsigned int EBO;
     unsigned int n;
+    bool skip_render_boundary;
 
 public:
-    Plane(int vert_num_per_side = 2, vec3 pos = vec3(0.0f,0.0f,0.0f), vec3 size = vec3(1.0f,1.0f,1.0f)) 
-        : Object(pos, size), n(max(2,vert_num_per_side))
+    Plane(int vert_num_per_side = 2, vec3 pos = vec3(0.0f,0.0f,0.0f), vec3 size = vec3(1.0f,1.0f,1.0f), bool skip_render_boundary = false) 
+        : Object(pos, size), n(glm::max(2,vert_num_per_side)), skip_render_boundary(skip_render_boundary)
     {}
 
     void construct() override {

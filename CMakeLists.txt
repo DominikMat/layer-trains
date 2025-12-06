@@ -55,6 +55,8 @@ target_include_directories(Layer_Trains
         ${CMAKE_SOURCE_DIR}/src/settings
         ${CMAKE_SOURCE_DIR}/src/ui
         ${CMAKE_SOURCE_DIR}/src/terrain
+        ${CMAKE_SOURCE_DIR}/src/path_drawer
+        ${CMAKE_SOURCE_DIR}/src/scenes
 )
 
 # (opcjonalnie) jeśli chcesz wydruki configure-time

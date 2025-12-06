@@ -11,30 +11,41 @@
 #include <stdexcept>
 #include <functional>
 
-class Camera;
+class Interactable;
+
+enum InteractionType {
+    PATH_HANDLE, NONE
+};
 
 using namespace glm;
+using InteractionCallback = std::function<void(Interactable *i)>;
 
 class Interactable : public Object {
-public:
+    public:
 
-    using InteractionCallback = std::function<void()>;
     std::vector<InteractionCallback> callbacks;
     
     float interaction_distance = 0.f;
     float interaction_distance_sqr = 0.f;
     float highlight_distance_sqr = 0.f;
 
+    const char* name = "Interactable";
+    InteractionType type;
+
     Sphere render_sphere;
 
-    Interactable(vec3 position, float interaction_distance = 1.f) : 
+    bool disabled = false;
+
+    Interactable(vec3 position, const char* name, InteractionType type, float interaction_distance = 1.f) : 
         Object(position,vec3(interaction_distance)), 
         interaction_distance(interaction_distance),
-        render_sphere(position, interaction_distance*INTERACTABLE_RENDER_RADUIS_MUTLIPLIER) 
+        render_sphere(position, interaction_distance*INTERACTABLE_RENDER_RADUIS_MUTLIPLIER),
+        name(name), type(type)
         {
         this->render_to_world_pos = false;
         interaction_distance_sqr = interaction_distance*interaction_distance;
         highlight_distance_sqr = interaction_distance_sqr;
+        std::cout << "created interactable: " << name << std::endl;
     }
 
     void add_callback(const InteractionCallback& callback_function) {
@@ -42,13 +53,17 @@ public:
     }
 
     void call() {
+        if (type == InteractionType::NONE || disabled) return;
+        
         render_sphere.set_colour( Colour::RED );
         for (const auto& callback : callbacks) { 
-            if (callback) callback();
+            if (callback) callback(this);
         }
     }
-
+    
     void process (float distance_sqr, bool call_in_range ) {
+        if (type == InteractionType::NONE || disabled) return;
+
         //highlight obj if in range
         if (distance_sqr <= highlight_distance_sqr){
             render_sphere.set_colour( INTERACTABLE_HIGHLIGHTED_COLOUR );
@@ -66,14 +81,15 @@ public:
         render_sphere.configure_render_properties();
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_FALSE);
+        //glDepthMask(GL_FALSE);
     }
     void disable_render_properties () override {
         render_sphere.disable_render_properties();
         glDisable(GL_BLEND);
-        glDepthMask(GL_TRUE);
+        //glDepthMask(GL_TRUE);
     }
     void render () override {
+        if (disabled) return
         render_sphere.set_position(position);
         render_sphere.set_size(size);
         render_sphere.render();
@@ -81,6 +97,9 @@ public:
     void construct () override {
         render_sphere.construct();
     }
+
+    void disable() { disabled = true; }
+    void enable() { disabled = false; }
 };
 
 #endif // Interactable_H

@@ -36,10 +36,15 @@ public:
         }
     }
     
-    void place(Object* obj) {
+    void place(Object* obj, int render_priority = 0) {
         this->objects.push_back(obj);
         obj->construct();
         camera->set_orthographic(obj->shader);
+
+        // std::sort(objects.begin(), objects.end(), 
+        //     [](const Object* a, const Object* b) { 
+        //     return a->render_priority < b->render_priority; 
+        //     });
     }
 };
 

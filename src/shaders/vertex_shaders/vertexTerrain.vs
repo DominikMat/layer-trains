@@ -12,15 +12,35 @@ uniform mat4 projection;
 uniform sampler2D heightmap;
 uniform bool heightmap_enabled;
 uniform float heightmap_scale;
+uniform int heightmap_resolution_x = 1024;
+uniform int heightmap_resolution_y = 1024;
 
 void main()
 {
     vec3 position = aPos;
     
     if (heightmap_enabled) { 
-        float height = texture(heightmap, aTexCoord).x; // Używamy aTexCoord!
-        height = height * heightmap_scale; 
-        position.z = height; // Ustaw pozycję Z wierzchołka
+        vec2 texCoord = aTexCoord;
+        
+        // Check if height is valid (not at boundary/edge artifacts)
+        // float heightmap_step_x = 1.f / heightmap_resolution_x;
+        // if (texCoord.x < heightmap_step_x) texCoord.x = heightmap_step_x;
+        // if (texCoord.x > 1.f - heightmap_step_x) texCoord.x = 1.f - heightmap_step_x;
+
+        // float heightmap_step_y = 1.f / heightmap_resolution_y;
+        // if (texCoord.y < heightmap_step_y) texCoord.y = heightmap_step_y;
+        // if (texCoord.y > 1.f - heightmap_step_y) texCoord.y = 1.f - heightmap_step_y;
+
+        float heightmap_step_x = 1.f / heightmap_resolution_x;
+        float heightmap_step_y = 1.f / heightmap_resolution_y;
+        if (texCoord.x < heightmap_step_x || texCoord.x > 1.f - heightmap_step_x
+            || texCoord.y < heightmap_step_y || texCoord.y > 1.f - heightmap_step_y) {
+
+            position.z = 0.f;
+
+        } else {
+            position.z = texture(heightmap, texCoord).x * heightmap_scale;
+        }
     } 
 
     v_worldPos = (transform * vec4(position, 1.0)).xyz;

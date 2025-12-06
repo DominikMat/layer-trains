@@ -1,6 +1,21 @@
 #ifndef TERRAINDATA_H
 #define TERRAINDATA_H
 
+#define MAX_TAG_AMOUNT 16
+#define SNOW_FALLOFF_RANGE 1000.f // Distance above snow level where snow covers everything
+#define SNOW_MAX_STEEPNESS 0.065f  // How flat ground must be for snow at the lowest level
+
+
+enum TerrainTagType {
+    NAME_TAG, LEVEL_START, LEVEL_END, DISABLED
+};
+struct TerrainTag {
+    float uv_x;
+    float uv_y;
+    const char* name = "unassigned";
+    TerrainTagType type = TerrainTagType::DISABLED;
+};
+
 struct TerrainData
 {
     const char* title;
@@ -13,10 +28,11 @@ struct TerrainData
     float minimum_height_reach;
     float maximum_height_reach;
     float vertical_scale;
+
     float water_level_height = 0.f;
     float snow_level_height = 3000.f;
-    float snow_falloff_range = 1000.f; // Distance above snow level where snow covers everything
-    float snow_max_steepness = 0.065f;  // How flat ground must be for snow at the lowest level
+
+    TerrainTag tags[MAX_TAG_AMOUNT];
 };
 
 const TerrainData terrain_transalpine = {
@@ -29,11 +45,16 @@ const TerrainData terrain_transalpine = {
     /* maximum_height_reach: */ 2500.f,
     /* vertical_scale: */ 295.07f / 1024.f,
     /* water_level_height: */ 0.f,
-    /* snow_level_height: */ 1800.f
+    /* snow_level_height: */ 1800.f,
+
+    {
+        { 0.7f, 0.01f, "Level Start", TerrainTagType::LEVEL_START },
+        { 0.01f, 0.8f, "Level End", TerrainTagType::LEVEL_END}
+    }
 };
 
 enum BlueRegions {
-    INTERACTABLE = 255, 
+    BLUE_RESERVED12 = 255, 
     NATURE_RESERVE = 239,
     CITY = 223,
     BLUE_RESERVED0 = 207,
@@ -51,7 +72,7 @@ enum BlueRegions {
     BLUE_NONE = 0
 };
 enum GreenRegions {
-    NAME_TAG = 255, 
+    GREEN_RESERVED0 = 255, 
     FORREST = 239,
     SAND = 223,
     WATER = 207,
@@ -69,8 +90,8 @@ enum GreenRegions {
     GREEN_NONE = 0,
 };
 
-static const std::unordered_map<int, vec4> BLUE_REGION_COLOURS = {
-    { BlueRegions::INTERACTABLE, Colour::TRANSPARENT }, // Interactable (Invisible on map, logic handled separately)
+const std::unordered_map<int, vec4> BLUE_REGION_COLOURS = {
+    { BlueRegions::BLUE_RESERVED12, Colour::TRANSPARENT }, // Interactable (Invisible on map, logic handled separately)
     { BlueRegions::NATURE_RESERVE, Colour::GREEN }, // Nature Reserve (Dark Green tint)
     { BlueRegions::CITY, Colour::YELLOW }, // City Area (Grey-Blue tint)
     { BlueRegions::BLUE_RESERVED0,   Colour::TRANSPARENT } , // Default (No tint)
@@ -87,8 +108,8 @@ static const std::unordered_map<int, vec4> BLUE_REGION_COLOURS = {
     { BlueRegions::BLUE_RESERVED11,   Colour::TRANSPARENT },  // Default (No tint)
     { BlueRegions::BLUE_NONE,   Colour::TRANSPARENT }  // Default (No tint)
 };
-static const std::unordered_map<int, vec4> GREEN_REGION_COLOURS = {
-    { GreenRegions::NAME_TAG, Colour::TRANSPARENT }, // Forest
+const std::unordered_map<int, vec4> GREEN_REGION_COLOURS = {
+    { GreenRegions::GREEN_RESERVED0, Colour::TRANSPARENT }, // Forest
     { GreenRegions::FORREST, vec4(0.76f, 0.70f, 0.50f, 1.0f) }, // Sand
     { GreenRegions::SAND, vec4(0.00f, 0.30f, 0.70f, 1.0f) }, // Water
     { GreenRegions::WATER,   Colour::SKY_BLUE },  // Default grass/ground

@@ -47,11 +47,33 @@ public:
         Texture generated_texture = painter.bake_terrain_texture();
 
         // get interactable and name tag positions from painer, attach them to terrain
-        vector<vec2> interactable_positions = painter.get_interactable_positions();
-        for (vec2 uv : interactable_positions) {
-            Interactable *i = interactable_manager->create ( vec3(0.f),INTERACTABLE_INTERACT_DISTANCE );
-            attach_to_surface (i, uv.x, uv.y);
-            cout << "Interactable detected, attached to surface at: " << uv.x << ", " << uv.y << endl;
+        //vector<vec2> interactable_positions = painter.get_interactable_positions();
+        for (TerrainTag tag : terrain_data->tags) {
+            if (tag.type == TerrainTagType::DISABLED) break; // reached unused tag space, can exit
+            
+            // select interaction type and distance based on tag type
+            InteractionType interaction_type = InteractionType::NONE;;
+            float interact_dist = 0.f;
+
+            switch (tag.type) {
+                // path handles
+                case TerrainTagType::LEVEL_START:
+                case TerrainTagType::LEVEL_END:
+                    interaction_type = InteractionType::PATH_HANDLE;
+                    interact_dist = INTERACTABLE_INTERACT_DISTANCE;
+                    break;
+
+                // no interaction
+                case TerrainTagType::NAME_TAG:
+                default:
+                    interaction_type = InteractionType::NONE;
+                    interact_dist = INTERACTABLE_INTERACT_DISTANCE;
+            }
+
+            // create interactable object in interactable manager, attach it to the terrain
+            Interactable *i = interactable_manager->create ( vec3(0.f), tag.name, interaction_type, interact_dist );
+            attach_to_surface (i, tag.uv_x, tag.uv_y);
+            cout << "Interactable " << tag.name << " detected, attached to surface at: " << tag.uv_x << ", " << tag.uv_y << endl;
         }
 
         // handle shader and camera 

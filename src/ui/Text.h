@@ -208,12 +208,12 @@ public:
     }
     
     // Metoda do zmiany tekstu w trakcie gry
-    void setText(std::string newText) {
+    void set_text(std::string newText) {
         textString = newText;
     }
 
     // Metoda pomocnicza do obliczania szerokości tekstu (dla centrowania)
-    float getTextWidth() {
+    float get_text_width() {
         float width = 0;
         for (char c : textString) {
             width += (Characters[c].Advance >> 6) * scale;
