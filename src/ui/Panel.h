@@ -81,12 +81,8 @@ public:
         glDeleteBuffers(1, &EBO);
     }
 
-    void configure_render_properties(Shader *s = NULL) override {
-        if (uses_custom_shader)
-            shader->setVec4("colour", colour);
-        else if (s != NULL) {
-            s->setVec4("colour", colour);
-        }
+    void configure_render_properties() override {
+        shader->setVec4("colour", colour);
     }
 };
 

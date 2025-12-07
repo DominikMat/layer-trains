@@ -8,108 +8,76 @@
 #include "settings/Settings.h"
 #include <algorithm> // Dla std::clamp
 
+const float DOUBLE_CLICK_WINDOW = 0.3f;
 using namespace glm;
 
+enum DoubleClickState {
+    IDLE=0, FIRST_CLICK_PRESSED=1, FIRST_CLICK_RELEASED=2, SECOND_CLICK_PRESSED=3, SECOND_CLICK_RELEASED=4
+};
+
+struct MouseClick {
+    bool is_clicked = false;
+    bool is_double_clicked = false;
+    bool is_held = false;
+
+    DoubleClickState double_click_state = DoubleClickState::IDLE;
+    float double_click_timer = 0.f;
+};
+
 class InputHandler {
-private:
-    vec3 camera_mv;
-    bool simulation_paused, was_space_pressed;
-    bool holding_shift;
-    float scroll_value, scroll_speed_multiplier;
-    vec2 mouse_position_normalized; // Twoja oryginalna dziwna normalizacja (0-1)
-    vec2 mouse_position_pixels;     // Surowe piksele ekranu
-    bool was_mouse_pressed, is_mouse_pressed;         // Do wykrywania krawędzi kliknięcia
+public:
+    bool simulation_paused = false, was_space_pressed = false, holding_shift = false;
+    float scroll_value = 1.f, scroll_speed_multiplier = 10.f;
+    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), mouse_position_pixels = vec2(0.f);     // Surowe piksele ekranu
+    
+    MouseClick mouse_left;
+    MouseClick mouse_right;
+    MouseClick mouse_middle;
 
     static InputHandler *instance;
 
-public:
+    InputHandler() { instance = this; }
 
-    InputHandler() : 
-        camera_mv(vec3(0.f)), 
-        simulation_paused(false), was_space_pressed(false), 
-        scroll_value(1.0f), scroll_speed_multiplier(0.1f),
-        was_mouse_pressed(false), is_mouse_pressed(false)
-    {
-        instance = this;
-    }
+    void process_input(GLFWwindow *w, float dt){
 
-    void process_input(GLFWwindow *w){
-        if(glfwGetKey(w, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-            glfwSetWindowShouldClose(w, true);
-        
-        // camera movement
-        camera_mv = vec3(0.f);
-        if(glfwGetKey(w, GLFW_KEY_W) == GLFW_PRESS)
-            camera_mv += V3_Z;
-        if(glfwGetKey(w, GLFW_KEY_S) == GLFW_PRESS)
-            camera_mv -= V3_Z;
-        if(glfwGetKey(w, GLFW_KEY_A) == GLFW_PRESS)
-            camera_mv += V3_X;
-        if(glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS)
-            camera_mv -= V3_X;
-
-        // if(glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-        //     camera_mv += V3_Y;
-        // if(glfwGetKey(w, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-        //     camera_mv -= V3_Y;
-
-        // pause
-        if(glfwGetKey(w, GLFW_KEY_SPACE) == GLFW_PRESS){
-            if (!was_space_pressed) simulation_paused = !simulation_paused; 
-            was_space_pressed = true;
-        }
-        else was_space_pressed = is_mouse_pressed = false;
-        
+        // shift
         holding_shift = glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+
+        // pause 
+        if(glfwGetKey(w, GLFW_KEY_SPACE) == GLFW_RELEASE) simulation_paused = !simulation_paused;
 
         // get mouse position
         double xpos, ypos;
         glfwGetCursorPos(w, &xpos, &ypos);
+        last_mouse_position_pixels = mouse_position_pixels;
         mouse_position_normalized = vec2((float)(xpos / SCR_WIDTH)*2.f, (0.5f - (float)(ypos / SCR_HEIGHT))*2.f);
         mouse_position_normalized += vec2(0.011f, -0.015f); // offset idk why ???
         mouse_position_normalized.x = glm::clamp(mouse_position_normalized.x, 0.f, 1.f);
         mouse_position_normalized.y = glm::clamp(mouse_position_normalized.y, 0.f, 1.f);
         mouse_position_pixels = vec2(xpos, ypos);
 
-        // Wykrywanie kliknięcia - krawędź
-        if (glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-            is_mouse_pressed = !was_mouse_pressed;
-            was_mouse_pressed = true;
-        } else {
-            was_mouse_pressed = false;
-        }
-
+        // mouse button logic
+        update_mouse_click_logic(&mouse_left, glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT), dt);
+        update_mouse_click_logic(&mouse_middle, glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_MIDDLE), dt);
+        update_mouse_click_logic(&mouse_right, glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_RIGHT), dt);
     }
-
-    // Statyczna funkcja zwrotna (callback) GLFW dla kółka myszy
+    
+    // Scroll wheel logic
     static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
         if (instance) instance->update_scroll_value((float)yoffset);
     }
-
-    // Metoda do aktualizacji wartości scroll_value (zoom)
     void update_scroll_value(float yoffset) {
         scroll_value -= yoffset * scroll_speed_multiplier; 
-        scroll_value = std::clamp(scroll_value, 0.f, 2.f);
+        //scroll_value = std::clamp(scroll_value, 0.f, 2.f);
     }
-    void reset_scroll_value() {
-        scroll_value = 1.f;
-    }
-    void set_scroll_speed(float new_speed) {
-        scroll_speed_multiplier = new_speed;
-    }
-    float get_scroll_speed() {
-        return scroll_speed_multiplier;
-    }
-
-    vec3 get_camera_movement() { return camera_mv; }
-    bool get_simulation_paused() { return simulation_paused; }
-    float get_scroll_value() { return scroll_value; }
-    bool is_holding_shift() { return holding_shift; }
-    bool is_left_mouse_clicked() { return is_mouse_pressed; }
+    void reset_scroll_value() { scroll_value = 1.f;}
+    void set_scroll_speed(float new_speed) { scroll_speed_multiplier = new_speed; }
+    float get_scroll_speed() { return scroll_speed_multiplier; }
 
     // Znormalizowana pozycja myszy (do shadera)
     vec2 get_mouse_position_normalized() { return mouse_position_normalized; }
     vec2 get_mouse_position_pixels() { return mouse_position_pixels; }
+    vec2 get_mouse_movement_since_last_frame() { return (mouse_position_pixels-last_mouse_position_pixels); }
 
     vec3 get_mouse_position_world() {
         // 2. Odczytaj piksel pod myszą
@@ -126,6 +94,85 @@ public:
         return vec3(pixelData[0], pixelData[1], pixelData[2]);
     }
 
+    // mouse state getters
+    bool is_left_mouse_clicked() { return mouse_left.is_clicked; }
+    bool is_left_mouse_held() { return mouse_left.is_held; }
+    bool is_left_mouse_double_clicked() { return mouse_left.is_double_clicked; }
+
+    bool is_middle_mouse_clicked() { return mouse_middle.is_clicked; }
+    bool is_middle_mouse_held() { return mouse_middle.is_held; }
+    bool is_middle_mouse_double_clicked() { return mouse_middle.is_double_clicked; }
+
+    bool is_right_mouse_clicked() { return mouse_right.is_clicked; }
+    bool is_right_mouse_held() { return mouse_right.is_held; }
+    bool is_right_mouse_double_clicked() { return mouse_right.is_double_clicked; }
+
+    // other input getters
+    bool get_simulation_paused() { return simulation_paused; }
+    float get_scroll_value() { return scroll_value; }
+    bool is_holding_shift() { return holding_shift; }
+
+private:
+    void update_mouse_click_logic(MouseClick *state, int curr_val, float dt) {
+        
+        bool was_held = state->is_held;
+        state->is_held = curr_val == GLFW_PRESS;
+        
+        bool just_pressed = !was_held && state->is_held;
+        bool just_released = was_held && !state->is_held;
+
+        state->is_clicked = just_released; // is_clicked true on key released (one frame)
+        
+        /* DOUBLE CLICK LOGIC */
+        
+        // reset double click logic after one frame (if was true on the last one)
+        if (state->is_double_clicked) state->double_click_state = DoubleClickState::IDLE;
+
+        // start tracking state on click
+        if (just_pressed && state->double_click_state == DoubleClickState::IDLE){
+            state->double_click_state = DoubleClickState::FIRST_CLICK_PRESSED;
+            state->double_click_timer = 0.f;
+        }
+
+        // double click state update logic
+        state->double_click_timer += dt;
+        if (state->double_click_timer > DOUBLE_CLICK_WINDOW) {
+            state->double_click_state = DoubleClickState::IDLE; // reset state if timer expired
+        }
+        else { 
+            // if relased -> update double click state to released (so +1 because the enums form a sequence)
+            if (just_released && (state->double_click_state == DoubleClickState::FIRST_CLICK_PRESSED || state->double_click_state == DoubleClickState::SECOND_CLICK_PRESSED)) {
+                state->double_click_state = (DoubleClickState)((int)(state->double_click_state) + 1);
+            }
+
+            // check if second click pressed
+            if (just_pressed && state->double_click_state == DoubleClickState::FIRST_CLICK_RELEASED)
+                state->double_click_state = DoubleClickState::SECOND_CLICK_PRESSED;
+        }
+
+        state->is_double_clicked = state->double_click_state == DoubleClickState::SECOND_CLICK_RELEASED;
+    }
+
 };
 
 #endif // WORLD_H
+
+        // if(glfwGetKey(w, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        //     glfwSetWindowShouldClose(w, true);
+        
+        // // camera movement
+        // camera_mv = vec3(0.f);
+        // if(glfwGetKey(w, GLFW_KEY_W) == GLFW_PRESS)
+        //     camera_mv += V3_Z;
+        // if(glfwGetKey(w, GLFW_KEY_S) == GLFW_PRESS)
+        //     camera_mv -= V3_Z;
+        // if(glfwGetKey(w, GLFW_KEY_A) == GLFW_PRESS)
+        //     camera_mv += V3_X;
+        // if(glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS)
+        //     camera_mv -= V3_X;
+
+        // if(glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        //     camera_mv += V3_Y;
+        // if(glfwGetKey(w, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+        //     camera_mv -= V3_Y;
+

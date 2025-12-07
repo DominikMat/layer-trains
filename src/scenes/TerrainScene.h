@@ -14,27 +14,27 @@ public:
     InteractableManager *interactable_manager;
 
     TerrainPath *terrain_path_drawer;
-    
+
+    float last_scroll_value = 1.f;
+
     /* testing */
     Text *test_text;
     Interactable *test_interact;
     Panel *test_panel;
     /* end testing */
 
-    TerrainScene (TerrainData terrain_data, World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih) {
+    TerrainScene (TerrainData terrain_data, World *w, Camera *c, ScreenUI *s, World *wui, InputHandler *ih) : Scene(w,c,s,wui,ih) {
         interactable_manager = new InteractableManager(world, 
             [this](Interactable *i) { 
                 this->interact_callback(i); 
             }
         );
-        terrain = new Terrain(&terrain_data, interactable_manager, camera);
+        terrain = new Terrain(&terrain_data, w, interactable_manager, camera);
     }
 
     void init( ) override {
         // configure terrain object
         terrain_obj = terrain->get_obj();
-        world->place(terrain_obj);
-        
 
         // --- Interaction Objects ---
         test_interact = new Interactable(vec3(0.f), "test interact", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE); // Position 0, will be moved by attach
@@ -54,12 +54,13 @@ public:
         test_text = new Text("Layer Trains Prototype ;)", 1.5f, Colour::WHITE);
         test_text->set_parent(test_panel);
         test_text->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(15) );
+        test_text->set_colour(Colour::WHITE);
         screen_ui->place( test_text );
 
     }
 
     void loop(float dt) override {
-        rotate_terrain(dt);
+        camera_controls(dt);
 
         // update terrain path
         terrain_path_drawer->update_path(user_input);
@@ -74,6 +75,12 @@ public:
             terrain_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos);
             create_path_handle_at_pos (terrain_path_drawer->end_point);
         }
+
+        // prints
+    
+        if (user_input->is_left_mouse_double_clicked()) std::cout << "Left Mouse DOUBLE clicked" << std::endl;
+        if (user_input->is_middle_mouse_double_clicked()) std::cout << "middle Mouse DOUBLE clicked" << std::endl;
+        if (user_input->is_right_mouse_double_clicked()) std::cout << "right Mouse DOUBLE clicked" << std::endl;
     }
 
     Shader* get_world_pos_buffer_shader() override {
@@ -111,17 +118,26 @@ public:
     }
 
 private:
-    void rotate_terrain(float dt) {
-        if (!terrain_path_drawer->drawing()) {
-            vec3 camera_mv = user_input->get_camera_movement();
-            int speedup = user_input->is_holding_shift() ? CAMERA_SHIFT_SPEED_MULTIPLIER : 1.f;
-            
-            // Note: Using terrain_obj for rotation as per your code, though typically Camera moves around
-            terrain_obj->rotate(V3_Z * (camera_mv.x * CAMERA_PAN_SPEED * dt * speedup)); 
-            if (camera_mv.z > 0.f && terrain_obj->rotation.x < 0.f) terrain_obj->rotate(V3_X * (camera_mv.z * CAMERA_PAN_SPEED * dt * speedup)); 
-            if (camera_mv.z < 0.f && terrain_obj->rotation.x > -90.f) terrain_obj->rotate(V3_X * (camera_mv.z * CAMERA_PAN_SPEED * dt * speedup)); 
-            
-            camera->set_orthographic_zoom(glm::max(0.01f,user_input->get_scroll_value()) * 2.f); 
+    void camera_controls(float dt) {
+        /* Zoom control */
+        if (!terrain_path_drawer->drawing()){
+            float delta_scroll = user_input->get_scroll_value() - last_scroll_value;
+            last_scroll_value = user_input->get_scroll_value();
+            camera->change_orthographic_zoom(delta_scroll); 
+        }
+
+        /* Blender-like camera movement */
+        if (user_input->is_right_mouse_held()){
+            vec2 mouse_delta = user_input->get_mouse_movement_since_last_frame();
+            float zoom_level_modifier = glm::clamp(camera->get_current_orthographic_zoom(), 0.2f, 1.75f);
+
+            if (!user_input->is_holding_shift()) {
+                camera->rotate(V3_Y * mouse_delta.x * CAMERA_PAN_SPEED * dt * zoom_level_modifier);
+                camera->rotate(V3_X * mouse_delta.y * CAMERA_PAN_SPEED * dt * zoom_level_modifier);
+            } else {
+                camera->move(V3_X * mouse_delta.x * CAMERA_MOVEMENT_SPEED * dt * zoom_level_modifier);
+                camera->move(V3_Y * -mouse_delta.y * CAMERA_MOVEMENT_SPEED * dt * zoom_level_modifier);
+            }
         }
     }
 };

@@ -15,12 +15,13 @@ public:
     World *world;
     Camera *camera;
     ScreenUI *screen_ui;
+    World *world_ui;
     InputHandler *user_input;
 
     bool is_active = true;
 
-    Scene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) 
-        : world(w), camera(c), screen_ui(s), user_input(ih) {}
+    Scene (World *w, Camera *c, ScreenUI *s, World *wui, InputHandler *ih) 
+        : world(w), camera(c), screen_ui(s), user_input(ih), world_ui(wui) {}
 
     virtual void init() = 0;
     virtual void loop(float dt) = 0;

@@ -29,8 +29,8 @@ public:
          
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
-            object_ptr->configure_render_properties();
             object_ptr->update_transform();
+            object_ptr->configure_render_properties();
             object_ptr->render(); 
             object_ptr->disable_render_properties();
         }

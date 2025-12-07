@@ -9,6 +9,7 @@
 #include "world_objects/Object.h"
 #include "world_objects/Plane.h"
 #include "rendering/Camera.h"
+#include "Text.h"
 #include "settings/Settings.h"
 #include "ElevationLineDrawer.h"
 #include "InteractableManager.h"
@@ -24,6 +25,7 @@ class Terrain
 {
 public:
     Plane terrain_obj;
+    Plane terrain_floor;
     Shader terrain_shader;
     ElevationLineDrawer elevation_line_drawer;
     const TerrainData *terrain_data;
@@ -31,13 +33,18 @@ public:
 
     vector<Interactable*> attached_interactables;
 
-    Terrain(const TerrainData *terrain_data, InteractableManager *interactable_manager, Camera *camera, vec3 pos = vec3(0.f)) :
+    Terrain(const TerrainData *terrain_data, World *w, InteractableManager *interactable_manager, Camera *camera, vec3 pos = vec3(0.f)) :
         terrain_shader(ShaderManager::get_default_world_shader()),
         elevation_line_drawer(terrain_data->heightmap_path, terrain_data->vertical_scale),
         terrain_data(terrain_data), heightmap_texture(Texture(terrain_data->heightmap_path, 1))
     {
-        // Setup the physical plane object
+        // Setup the physical plane object for terrain and floor
         terrain_obj = Plane(glm::max(terrain_data->resolution_x,terrain_data->resolution_y), pos);
+
+        terrain_floor = Plane(2, pos);
+        terrain_floor.set_parent(&terrain_obj);
+        terrain_floor.set_colour(Colour::DARK_GREY);
+        //terrain_floor.set_colour(Colour::TERRAIN_SIDE_COLOUR);
         
         // Center the physical mesh so y=0 is the base
         terrain_obj.move(V3_Y * -(terrain_data->vertical_scale * 2)); 
@@ -74,6 +81,21 @@ public:
             Interactable *i = interactable_manager->create ( vec3(0.f), tag.name, interaction_type, interact_dist );
             attach_to_surface (i, tag.uv_x, tag.uv_y);
             cout << "Interactable " << tag.name << " detected, attached to surface at: " << tag.uv_x << ", " << tag.uv_y << endl;
+
+            if (tag.type == TerrainTagType::NAME_TAG) { // create world space text name tag 
+                Text *name_tag_obj = new Text(tag.name, 1.5f/SCR_WIDTH, Colour::BLACK);
+                name_tag_obj->set_shader(&ShaderManager::get_world_ui_shader());
+                attach_to_surface(name_tag_obj, tag.uv_x, tag.uv_y);
+                //name_tag_obj->set_size(0.01f);
+                name_tag_obj->move(V3_Z*0.1f);
+                name_tag_obj->rotate(V3_X*90.f);
+                name_tag_obj->set_colour(Colour::BLACK);
+                w->place(name_tag_obj);
+            }
+
+            // place objects in world
+            w->place(&terrain_obj);
+            w->place(&terrain_floor);
         }
 
         // handle shader and camera 
@@ -83,7 +105,7 @@ public:
         terrain_obj.set_shader(&terrain_shader);
         
         // Standard Orientation: Rotated -45 degrees on X, Scaled up 3x
-        terrain_obj.rotate(vec3(-45.f, 0.f, 0.f));
+        terrain_obj.rotate(vec3(-90.f, 0.f, 0.f));
         terrain_obj.scale(3.f);
     }
     

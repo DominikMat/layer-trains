@@ -31,6 +31,8 @@ public:
 
     mat4 global_transform_matrix, local_transform_matrix;
 
+    bool is_screen_object = false;
+
     virtual ~Object() = default;
 
     Object(vec3 pos = vec3(0.0f), vec3 size = vec3(1.0f))
@@ -73,11 +75,10 @@ public:
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.z), V3_Z);
         local_transform_matrix = glm::scale(local_transform_matrix, this->size);
     }
-    void calculate_transform_matrix() {
+    virtual void calculate_transform_matrix() { // Dodano virtual
         calculate_local_transform();
 
-        if (has_parent) {
-            // Mnożenie macierzy: Transformacja rodzica * Transformacja lokalna
+        if (has_parent && !is_screen_object) {
             global_transform_matrix = parent->get_transform() * local_transform_matrix;
         } else {
             global_transform_matrix = local_transform_matrix;
@@ -93,6 +94,7 @@ public:
     void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; } }
     void set_texture (Texture tex) { uses_texture = true; shader->setTexture(tex); }
     void set_shader (Shader *s) { shader = s; }
+    void set_screenspace() { is_screen_object = true; }
     void enable_shader() { shader->use(); }
     void update_transform() { shader->setMatrix("transform", global_transform_matrix); }
 

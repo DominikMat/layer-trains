@@ -49,7 +49,10 @@ const TerrainData terrain_transalpine = {
 
     {
         { 0.7f, 0.01f, "Level Start", TerrainTagType::LEVEL_START },
-        { 0.01f, 0.8f, "Level End", TerrainTagType::LEVEL_END}
+        { 0.01f, 0.8f, "Level End", TerrainTagType::LEVEL_END},
+        { 0.3f, 0.22f, "City One", TerrainTagType::NAME_TAG},
+        { 0.475f, 0.85f, "Dipla the city", TerrainTagType::NAME_TAG},
+        { 0.9f, 0.65f, "pretty mountain nature reserve", TerrainTagType::NAME_TAG},
     }
 };
 

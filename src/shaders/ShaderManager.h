@@ -28,8 +28,12 @@ public:
         return shader;
     }
     
-    static Shader& get_default_ui_shader() {
+    static Shader& get_screen_ui_shader() {
         static Shader shader = Shader(VERTEX_UI_PATH, FRAGMENT_UI_PATH);
+        return shader;
+    }
+    static Shader& get_world_ui_shader() {
+        static Shader shader = Shader(VERTEX_BASIC_PATH, FRAGMENT_UI_PATH);
         return shader;
     }
 

@@ -1,10 +1,10 @@
 #ifndef UI_OBJECT_H
 #define UI_OBJECT_H
 
-#include "ScreenObject.h"
 #include "ColourData.h"
 #include <vector>
 #include <algorithm>
+#include <glm/glm.hpp>
 
 enum class UIAnchor {
     TOP_LEFT,    TOP_CENTER,    TOP_RIGHT,
@@ -12,7 +12,7 @@ enum class UIAnchor {
     BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT,
 };
 
-class UIObject : public ScreenObject {
+class UIObject : public Object {
 public:
     UIAnchor anchor;
     glm::vec2 anchor_offset; // Offset from the anchor point in pixels
@@ -25,14 +25,14 @@ public:
     float scr_height = SCR_HEIGHT;
 
     UIObject(glm::vec2 size, UIAnchor anchor = UIAnchor::CENTER, glm::vec2 anchor_offset = glm::vec2(0.f))
-        : ScreenObject(get_anchor_position(anchor)+anchor_offset, size), anchor(anchor), anchor_offset(anchor_offset)
+        : Object(glm::vec3(get_anchor_position(anchor)+anchor_offset, 0.f), vec3(size,1.f)), anchor(anchor), anchor_offset(anchor_offset)
     {}
     UIObject(glm::vec2 position, glm::vec2 size)
-        : ScreenObject(position, size), anchor(UIAnchor::BOTTOM_LEFT), anchor_offset(vec2(0.f))
+        : Object(glm::vec3(position,0.f), glm::vec3(size,1.f)), anchor(UIAnchor::BOTTOM_LEFT), anchor_offset(vec2(0.f))
     {}
 
     void set_anchor (UIAnchor anchor, vec2 anchor_offset) {
-        position = get_anchor_position(anchor) + anchor_offset;
+        position = vec3(get_anchor_position(anchor) + anchor_offset,0.f);
         this->anchor = anchor;
         this->anchor_offset = anchor_offset;
     }
