@@ -5,10 +5,14 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include "Scene.h"
-#include "MatchSlopePath.h"
-#include "AutoSlopePath.h"
-#include "StraightPath.h"
+#include "MatchSlopePathDrawer.h"
+#include "TerrainPath.h"
+#include "AutoSlopePathDrawer.h"
+#include "PathSystem.h"
+#include "StraightPathDrawer.h"
 #include "ButtonPanel.h"
+
+#define curr_path_drawer terrain_path_drawer[current_path_draw_mode]
 
 enum ButtonID {
     MODE_STRAIGHT_PATH=0, MODE_ISO_PATH=2, MODE_AUTO_SLOPE=1
@@ -21,10 +25,13 @@ public:
     Plane *terrain_obj;
     InteractableManager *interactable_manager;
 
-    TerrainPath *terrain_path_drawer[3];
+    TerrainPathDrawer *terrain_path_drawer[3];
 
     float last_scroll_value = 1.f;
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
+    int draw_start_handle_id = 0;
+
+    PathSystem *path_system;
 
     /* testing */
     Text *test_text;
@@ -59,9 +66,16 @@ public:
         
         // --- Path drawer ---
         //terrain_path_drawer = new MatchSlopePath(terrain, world, 15.f, true);
-        terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPath(terrain, world, true);
-        terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePath(terrain, world, 1.f, true);
-        terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePath(terrain, world, 0.25f, true);
+        terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, world, true);
+        terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, world, 1.f, true);
+        terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, world, 0.25f, true);
+
+        // --- config path system ----
+        path_system = new PathSystem();
+        for (auto i : interactable_manager->get_current_interactables()) {
+            if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
+            std::cout << "added destination: " << i->name << std::endl; }
+        }
 
         // ==========================================================
         /* Create ui */
@@ -71,25 +85,31 @@ public:
     void loop(float dt) override {
         camera_controls(dt);
 
-        // update terrain path
-        terrain_path_drawer[current_path_draw_mode]->update_path(user_input);
+        // update terrain path'
+        curr_path_drawer->update_path(user_input);
 
         // process interactable objects
         vec3 mouse_terrain_local_pos = vec3(glm::inverse(terrain_obj->get_transform()) * vec4(user_input->get_mouse_position_world(), 1.f));
         interactable_manager->process_all(mouse_terrain_local_pos, user_input->is_left_mouse_clicked());
-
+        interactable_manager->resize_on_zoom(camera->get_current_orthographic_zoom()); 
+        
         // check end drawing
-        if (user_input->is_left_mouse_clicked() && terrain_path_drawer[current_path_draw_mode]->is_drawing_path() 
-            && glm::length(mouse_terrain_local_pos-terrain_path_drawer[current_path_draw_mode]->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
-            terrain_path_drawer[current_path_draw_mode]->end_drawing_at_pos(mouse_terrain_local_pos);
-            create_path_handle_at_pos (terrain_path_drawer[current_path_draw_mode]->get_end_point());
+        if (user_input->is_left_mouse_clicked() && curr_path_drawer->is_drawing_path() 
+            && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
+            curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos);
+            create_path_handle_at_pos (curr_path_drawer->get_end_point());
         }
-
+        
+        // add handle double click
+        if (user_input->is_left_mouse_double_clicked() && !curr_path_drawer->is_drawing_path()) {
+            create_path_handle_at_pos (mouse_terrain_local_pos);
+        }
+        
         /* slope value display */
-        if (current_path_draw_mode != ButtonID::MODE_STRAIGHT_PATH)
-            slope_text->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(terrain_path_drawer[current_path_draw_mode]->slope*100.f)) + "%");
-        else
-            slope_text->set_text("");
+        bool display_slope_info = current_path_draw_mode != ButtonID::MODE_STRAIGHT_PATH;
+        if (display_slope_info) slope_text->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->slope*100.f)) + "%");
+        slope_text->set_visible(display_slope_info);
+        slope_panel->set_visible(display_slope_info);
         
         // prints
         if (user_input->is_left_mouse_double_clicked()) std::cout << "Left Mouse DOUBLE clicked" << std::endl;
@@ -104,15 +124,21 @@ public:
     void interact_callback (Interactable *interactable) {
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
-                if (!terrain_path_drawer[current_path_draw_mode]->is_drawing_path()) {
-                    terrain_path_drawer[current_path_draw_mode]->start_drawing_at_pos(interactable->position);
+                if (!curr_path_drawer->is_drawing_path()) {
+                    curr_path_drawer->start_drawing_at_pos(interactable->position);
                     //user_input->reset_scroll_value();
                     interactable->disable();
+                    draw_start_handle_id = interactable->get_id();
                 }
                 else {
                     //user_input->reset_scroll_value();
-                    terrain_path_drawer[current_path_draw_mode]->end_drawing_at_pos(interactable->position);
+                    curr_path_drawer->end_drawing_at_pos(interactable->position);
                     last_scroll_value = user_input->get_scroll_value();
+                    path_system->add_link(draw_start_handle_id,interactable->get_id(),10.f); // TODO len calc
+
+                    std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
+                    if(path_system->are_necessary_destinations_connected()) 
+                        std::cout << "ALL DESTINATIONS REACHED! :]]]]]]]]]]]]]]]]]]]]] " << std::endl;
                 }
                 break;
             
@@ -130,9 +156,9 @@ public:
             case ButtonID::MODE_AUTO_SLOPE:
             case ButtonID::MODE_ISO_PATH:
                 current_path_draw_mode = (int)id; 
-                terrain_path_drawer[current_path_draw_mode]->reset(); 
                 break;
         }
+        terrain_path_drawer[current_path_draw_mode]->reset(); 
 
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << clicked << std::endl;
     }
@@ -150,7 +176,7 @@ public:
 private:
     void camera_controls(float dt) {
         /* Zoom control */
-        if (!terrain_path_drawer[current_path_draw_mode]->is_drawing_path()){
+        if (!curr_path_drawer->is_drawing_path()){
             float delta_scroll = user_input->get_scroll_value() - last_scroll_value;
             last_scroll_value = user_input->get_scroll_value();
             camera->change_orthographic_zoom(delta_scroll); 

@@ -7,7 +7,7 @@
 #include <vector>
 #include "Terrain.h"
 #include "InputHandler.h"
-#include "TerrainPath.h"
+#include "TerrainPathDrawer.h"
 #include "Line.h"
 #include "World.h"
 
@@ -16,7 +16,7 @@ using namespace std;
 
 #define CONSTANT_SLOPE_PATH_POINT_STEP 0.01f;
 
-class AutoSlopePath : public TerrainPath
+class AutoSlopePathDrawer : public TerrainPathDrawer
 {
 public:
     float max_slope = 15.f;
@@ -25,8 +25,8 @@ public:
     float last_scroll_value = 1.f;
     bool modify_scroll_on_next_update = false;
 
-    AutoSlopePath (Terrain *terrain, World *w, float max_slope = 1.f, bool debug_msg = false) 
-        : TerrainPath(terrain,w,max_slope,debug_msg), max_slope(max_slope) { }   
+    AutoSlopePathDrawer (Terrain *terrain, World *w, float max_slope = 1.f, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,w,max_slope,debug_msg), max_slope(max_slope) { }   
 
     void update_path (InputHandler *input_handler) override {
         /* modify max slope */
@@ -36,7 +36,7 @@ public:
         max_slope = glm::clamp(-1.f, max_slope + delta_scroll*PATH_DRAW_SLOPE_CHANGE_SPEED, 1.f);
         set_slope(max_slope);
 
-        TerrainPath::update_path(input_handler);
+        TerrainPathDrawer::update_path(input_handler);
     }
 
     void recalculate_path (vec3 start, vec3 end, float max_slope) override{        

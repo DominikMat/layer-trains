@@ -7,7 +7,7 @@
 #include <vector>
 #include "Terrain.h"
 #include "InputHandler.h"
-#include "TerrainPath.h"
+#include "TerrainPathDrawer.h"
 #include "Line.h"
 #include "World.h"
 
@@ -16,11 +16,11 @@ using namespace std;
 
 #define STRAIGHT_PATH_MINIMUM_TERRAIN_STEP 0.005f
 
-class StraightPath : public TerrainPath
+class StraightPathDrawer : public TerrainPathDrawer
 {
 public:
-    StraightPath (Terrain *terrain, World *w, bool debug_msg = false) 
-        : TerrainPath(terrain,w,0.f,debug_msg) { }   
+    StraightPathDrawer (Terrain *terrain, World *w, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,w,0.f,debug_msg) { }   
 
     void recalculate_path (vec3 start, vec3 end, float slope) override {
         float path_dist = glm::length(end-start);

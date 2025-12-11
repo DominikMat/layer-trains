@@ -30,17 +30,18 @@ class Interactable : public Object {
     float highlight_distance_sqr = 0.f;
 
     const char* name = "Interactable";
+    int id;
     InteractionType type;
 
     Sphere render_sphere;
 
     bool disabled = false;
 
-    Interactable(vec3 position, const char* name, InteractionType type, float interaction_distance = 1.f) : 
+    Interactable(vec3 position, const char* name, InteractionType type, float interaction_distance, int id=-1) : 
         Object(position,vec3(interaction_distance)), 
         interaction_distance(interaction_distance),
         render_sphere(position, interaction_distance*INTERACTABLE_RENDER_RADUIS_MUTLIPLIER),
-        name(name), type(type)
+        name(name), type(type), id(id)
         {
         this->render_to_world_pos = false;
         interaction_distance_sqr = interaction_distance*interaction_distance;
@@ -97,6 +98,8 @@ class Interactable : public Object {
     void construct () override {
         render_sphere.construct();
     }
+    int get_id() override { return id; }
+    void set_id(int new_id) { id = new_id; }
 
     void disable() { disabled = true; }
     void enable() { disabled = false; }
