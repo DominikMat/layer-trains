@@ -50,7 +50,8 @@ int main() {
             last_frame_time = current_time;
             
             /* Process user input  */
-            input_handler.process_input(window.get(), dt);
+            input_handler.process_input(window.get(), dt, window.get_size());
+            screen_ui.check_button_clicked(&input_handler);
             
             /* Update camera position for shaders */
             camera.calculate_transform_matrix();

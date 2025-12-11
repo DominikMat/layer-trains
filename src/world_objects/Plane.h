@@ -68,7 +68,6 @@ private:
     void subdivide() {        
         const float x_min = -.5f, w = 1.f;
         const float y_min = -.5f, h = 1.f;
-        const float tex_coord_mult = 2.f;
         
         // Recompute vertices using floating-point division (avoid integer division bug above)
         std::vector<float> subdiv_vertices(n*n*5);
@@ -79,10 +78,10 @@ private:
             for (int x = 0; x < n; ++x) {
                 float vert_pos_x = x_min+((float)x/(n-1))*w;
                 float vert_pos_y = y_min+((float)y/(n-1))*h;
-                
+
                 subdiv_vertices[i++] = vert_pos_x;
                 subdiv_vertices[i++] = vert_pos_y;
-                subdiv_vertices[i++] = 0.0f;
+                subdiv_vertices[i++] = 0.f;
                 subdiv_vertices[i++] = (vert_pos_x - x_min) / w;
                 subdiv_vertices[i++] = (vert_pos_y - y_min) / h;
             }
@@ -116,18 +115,5 @@ private:
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, subdiv_indices.size() * sizeof(unsigned int), subdiv_indices.data(), GL_STATIC_DRAW);
     }
 };
-
-// inline const float Plane::vertices[] = {
-//     // positions         // tex coords
-//     -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, // 0
-//      0.5f, -0.5f, 0.0f,   1.0f, 0.0f, // 1
-//      0.5f,  0.5f, 0.0f,   1.0f, 1.0f, // 2
-//     -0.5f,  0.5f, 0.0f,   0.0f, 1.0f  // 3
-// };
-
-// inline const unsigned int Plane::indices[] = {
-//     0, 1, 2,
-//     2, 3, 0
-// };
 
 #endif

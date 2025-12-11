@@ -4,9 +4,10 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <algorithm>
 #include "settings/Utility.h"
 #include "settings/Settings.h"
-#include <algorithm> // Dla std::clamp
+#include "Window.h"
 
 const float DOUBLE_CLICK_WINDOW = 0.3f;
 using namespace glm;
@@ -28,7 +29,7 @@ class InputHandler {
 public:
     bool simulation_paused = false, was_space_pressed = false, holding_shift = false;
     float scroll_value = 1.f, scroll_speed_multiplier = 10.f;
-    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), mouse_position_pixels = vec2(0.f);     // Surowe piksele ekranu
+    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f);     // Surowe piksele ekranu
     
     MouseClick mouse_left;
     MouseClick mouse_right;
@@ -38,28 +39,29 @@ public:
 
     InputHandler() { instance = this; }
 
-    void process_input(GLFWwindow *w, float dt){
+    void process_input(GLFWwindow *glfw_window, float dt, vec2 window_size){
 
         // shift
-        holding_shift = glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+        holding_shift = glfwGetKey(glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
 
         // pause 
-        if(glfwGetKey(w, GLFW_KEY_SPACE) == GLFW_RELEASE) simulation_paused = !simulation_paused;
+        if(glfwGetKey(glfw_window, GLFW_KEY_SPACE) == GLFW_RELEASE) simulation_paused = !simulation_paused;
 
         // get mouse position
         double xpos, ypos;
-        glfwGetCursorPos(w, &xpos, &ypos);
+        glfwGetCursorPos(glfw_window, &xpos, &ypos);
         last_mouse_position_pixels = mouse_position_pixels;
         mouse_position_normalized = vec2((float)(xpos / SCR_WIDTH)*2.f, (0.5f - (float)(ypos / SCR_HEIGHT))*2.f);
         mouse_position_normalized += vec2(0.011f, -0.015f); // offset idk why ???
         mouse_position_normalized.x = glm::clamp(mouse_position_normalized.x, 0.f, 1.f);
         mouse_position_normalized.y = glm::clamp(mouse_position_normalized.y, 0.f, 1.f);
-        mouse_position_pixels = vec2(xpos, ypos);
+        mouse_position_pixels = vec2(glm::clamp((float)xpos,0.f,window_size.x), glm::clamp((float)ypos,0.f,window_size.y));
+        mouse_position_pixels_inv_y = vec2(glm::clamp((float)xpos,0.f,window_size.x), glm::clamp(window_size.y - (float)ypos,0.f,window_size.y));
 
         // mouse button logic
-        update_mouse_click_logic(&mouse_left, glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT), dt);
-        update_mouse_click_logic(&mouse_middle, glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_MIDDLE), dt);
-        update_mouse_click_logic(&mouse_right, glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_RIGHT), dt);
+        update_mouse_click_logic(&mouse_left, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_LEFT), dt);
+        update_mouse_click_logic(&mouse_middle, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_MIDDLE), dt);
+        update_mouse_click_logic(&mouse_right, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_RIGHT), dt);
     }
     
     // Scroll wheel logic
@@ -77,6 +79,7 @@ public:
     // Znormalizowana pozycja myszy (do shadera)
     vec2 get_mouse_position_normalized() { return mouse_position_normalized; }
     vec2 get_mouse_position_pixels() { return mouse_position_pixels; }
+    vec2 get_mouse_position_pixels_inv_y() { return mouse_position_pixels_inv_y; }
     vec2 get_mouse_movement_since_last_frame() { return (mouse_position_pixels-last_mouse_position_pixels); }
 
     vec3 get_mouse_position_world() {

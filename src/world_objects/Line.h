@@ -28,7 +28,9 @@ public:
     Line(std::vector<vec3> points, float line_thickness = 3.f)
         : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness),
         points(points)
-    { }    
+    { 
+        render_to_world_pos = false;
+    }    
 
     Line(float line_thickness = 3.f)
         : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness),
@@ -81,6 +83,12 @@ public:
     }
     void clear_points() {
         points.clear();
+    }
+    int get_point_num() {
+        return points.size();
+    }
+    vec3 get_last_point() {
+        return points.back();
     }
 
     ~Line() override {

@@ -17,14 +17,14 @@
 #include "Heightmap.h"
 #include "settings/Settings.h"
 
+#define MAX_TEXTURE_SLOTS 16
+
 class Shader
 {
 public:
     unsigned int ID;
-    Texture tex;
-    Texture heightmap;
 
-    std::vector<Texture> textures;
+    std::vector<Texture*> textures;
 
     bool heightmap_enabled;
     bool uses_texture = false;
@@ -37,9 +37,10 @@ public:
 
     // constructor generates the shader on the fly
     // ------------------------------------------------------------------------
-    Shader(const char* vertexPath, const char* fragmentPath) 
-        : tex(TEXTURE_MISSING), heightmap(TEXTURE_EMPTY), heightmap_enabled(false)
+    Shader(const char* vertexPath, const char* fragmentPath) : heightmap_enabled(false)
     {
+        textures.clear();
+        
         // 1. retrieve the vertex/fragment source code from filePath
         std::string vertexCode;
         std::string fragmentCode;
@@ -91,22 +92,13 @@ public:
         // delete the shaders as they're linked into our program now and no longer necessary
         glDeleteShader(vertex);
         glDeleteShader(fragment);
-
-        // set texture units
-        use();
-        setInt("texture", 0);
-        setInt("heightmap", 1);
     }
     // activate the shader
     // ------------------------------------------------------------------------
     void use() 
     { 
         glUseProgram(ID); 
-
-        if (uses_texture) tex.use();
-        if (heightmap_enabled) heightmap.use();
-
-        for (int i=0; i<textures.size(); i++) textures[i].use();
+        for (int i=0; i<textures.size(); i++) textures[i]->use(i);
     }
     // utility uniform functions
     // ------------------------------------------------------------------------
@@ -140,22 +132,16 @@ public:
         unsigned int loc = glGetUniformLocation(ID, name.c_str());
         glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(matrix));
     }
-    void setTexture( Texture tex){
+    void addTexture(Texture* new_tex){
+        if (textures.size() >= MAX_TEXTURE_SLOTS) {
+            std::cout<< "Max number of textures loaded reached! while loading: " << new_tex->texturePath << std::endl;
+            return;
+        } 
         uses_texture = true;
-        if (tex.texture_slot == 0) {
-            this->tex = tex;
-        } else {
-            textures.push_back(tex);
-        }
-
+        textures.push_back(new_tex);
     }
-    void setHeightmap( Texture hmap, float hmap_scale) {
-        use();
-        setBool("heightmap_enabled", true);
-        setFloat("heightmap_scale", hmap_scale);
-        heightmap_enabled = true;
-        hmap.texture_slot = 1;
-        this->heightmap = hmap;
+    int get_last_loaded_tex_slot() {
+        return textures.size()-1;
     }
 
     void config_worldpos_buffer() {

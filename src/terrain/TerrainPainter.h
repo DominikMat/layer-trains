@@ -18,7 +18,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define ERROR_EMPTY_TEXTURE_RETURN Texture(1, 1, new unsigned char[3]{0,0,0}, 1)
+#define ERROR_EMPTY_TEXTURE_RETURN Texture(1, 1, new unsigned char[3]{0,0,0})
 
 #define TERRAIN_BOUNDARY_PIXEL_NUM 2
 
@@ -51,7 +51,7 @@ public:
         std::string cache_path = std::string(TEXTURE_GENERATED_CACHE_FOLDER_PATH) + "/" + cleaned_name + "_colour_texture.png";
 
         if (!debug_overwrite && std::ifstream(cache_path).good()) {
-            return Texture(cache_path.c_str(), 0, false);
+            return Texture(cache_path.c_str(), false);
         }
 
         // load terrain data

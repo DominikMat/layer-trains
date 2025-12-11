@@ -8,6 +8,7 @@
 #include <regex>
 #include "world_objects/Object.h"
 #include "world_objects/Plane.h"
+#include "TerrainPlane.h"
 #include "rendering/Camera.h"
 #include "Text.h"
 #include "settings/Settings.h"
@@ -24,9 +25,9 @@ using namespace std;
 class Terrain
 {
 public:
-    Plane terrain_obj;
-    Plane terrain_floor;
-    Shader terrain_shader;
+    TerrainPlane *terrain_obj;
+    Plane *terrain_floor;
+    Shader *terrain_shader = nullptr;
     ElevationLineDrawer elevation_line_drawer;
     const TerrainData *terrain_data;
     Texture heightmap_texture;
@@ -34,20 +35,20 @@ public:
     vector<Interactable*> attached_interactables;
 
     Terrain(const TerrainData *terrain_data, World *w, InteractableManager *interactable_manager, Camera *camera, vec3 pos = vec3(0.f)) :
-        terrain_shader(ShaderManager::get_default_world_shader()),
+        //terrain_shader(new DEFAULT_WORLD_SHADER),
         elevation_line_drawer(terrain_data->heightmap_path, terrain_data->vertical_scale),
-        terrain_data(terrain_data), heightmap_texture(Texture(terrain_data->heightmap_path, 1))
+        terrain_data(terrain_data), heightmap_texture(Texture(terrain_data->heightmap_path, true, true))
     {
         // Setup the physical plane object for terrain and floor
-        terrain_obj = Plane(glm::max(terrain_data->resolution_x,terrain_data->resolution_y), pos);
+        terrain_obj = new TerrainPlane(terrain_data, camera, pos);
 
-        terrain_floor = Plane(2, pos);
-        terrain_floor.set_parent(&terrain_obj);
-        terrain_floor.set_colour(Colour::DARK_GREY);
-        //terrain_floor.set_colour(Colour::TERRAIN_SIDE_COLOUR);
+        terrain_floor = new Plane(2, pos);
+        terrain_floor->set_parent(terrain_obj);
+        terrain_floor->set_colour(Colour::DARK_GREY);
+        //terrain_floor->set_colour(Colour::TERRAIN_SIDE_COLOUR);
         
         // Center the physical mesh so y=0 is the base
-        terrain_obj.move(V3_Y * -(terrain_data->vertical_scale * 2)); 
+        terrain_obj->move(V3_Y * -(terrain_data->vertical_scale * 2)); 
         
         // generate and apply a colour texture
         TerrainPainter painter = TerrainPainter(terrain_data);
@@ -84,33 +85,34 @@ public:
 
             if (tag.type == TerrainTagType::NAME_TAG) { // create world space text name tag 
                 Text *name_tag_obj = new Text(tag.name, 1.5f/SCR_WIDTH, Colour::BLACK);
-                name_tag_obj->set_shader(&ShaderManager::get_world_ui_shader());
+                name_tag_obj->set_shader(new WORLD_UI_SHADER);
                 attach_to_surface(name_tag_obj, tag.uv_x, tag.uv_y);
                 //name_tag_obj->set_size(0.01f);
                 name_tag_obj->move(V3_Z*0.1f);
+                name_tag_obj->move(-V3_X*name_tag_obj->get_text_width()/2.f);
                 name_tag_obj->rotate(V3_X*90.f);
                 name_tag_obj->set_colour(Colour::BLACK);
                 w->place(name_tag_obj);
             }
 
             // place objects in world
-            w->place(&terrain_obj);
-            w->place(&terrain_floor);
+            w->place(terrain_obj);
+            w->place(terrain_floor);
         }
 
         // handle shader and camera 
-        terrain_shader = ShaderManager::get_terrain_shader(heightmap_texture, terrain_data->vertical_scale, generated_texture);
-        terrain_shader.config_worldpos_buffer();
-        camera->set_orthographic(&terrain_shader);
-        terrain_obj.set_shader(&terrain_shader);
+        terrain_shader = &ShaderManager::get_terrain_shader(&heightmap_texture, terrain_data->vertical_scale, &generated_texture);
+        terrain_shader->config_worldpos_buffer();
+        camera->set_orthographic(terrain_shader);
+        terrain_obj->set_shader(terrain_shader);
         
         // Standard Orientation: Rotated -45 degrees on X, Scaled up 3x
-        terrain_obj.rotate(vec3(-90.f, 0.f, 0.f));
-        terrain_obj.scale(3.f);
+        terrain_obj->rotate(vec3(-90.f, 0.f, 0.f));
+        terrain_obj->scale(3.f);
     }
     
     Plane* get_obj() {
-        return &terrain_obj;
+        return terrain_obj;
     }
 
     // --- Fixed Attach Function ---
@@ -123,7 +125,7 @@ public:
 
         vec3 local_pos = elevation_line_drawer.get_local_pos_from_uv(along_x, along_y); // get local terrain position
         obj->set_position(local_pos); // reposition obj to local space (relative to terrain)
-        obj->set_parent(&terrain_obj); // attached objects will follow terrain rotations
+        obj->set_parent(terrain_obj); // attached objects will follow terrain rotations
     }
 };
 

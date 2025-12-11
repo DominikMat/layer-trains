@@ -13,6 +13,14 @@
 
 // Helper for high-precision math
 #define PI 3.14159265359f
+using namespace glm;
+using namespace std;
+
+struct CachedPathData {
+    vec2 start, end;
+    float slope, step;
+    int mode; // 0 - match slope, 1 - auto
+};
 
 class ElevationLineDrawer
 {
@@ -22,8 +30,8 @@ private:
     int hmap_width, hmap_height;
     bool height_data_loaded = false;
 
-    // Cache the full valid contour path for the current drawing session
-    std::vector<glm::vec3> cached_full_path; 
+    vector<vec3> cached_path;
+    CachedPathData cached_path_data;
 
 public:
     ElevationLineDrawer(const char* heightmap_path, float heightmap_scale) : heightmap_scale(heightmap_scale) {
@@ -45,130 +53,147 @@ public:
         }
     }
 
-    // --- Core Algorithm ---
-    
-    // Trace a single direction (used internally)
-    void trace_single_direction(glm::vec2 start_pixels, float grade, float max_dist_pixels, bool reverse_polarity, std::vector<glm::vec3>& out_path) {
-        glm::vec2 current_pos = start_pixels;
-        float current_dist = 0.f;
-        glm::vec2 last_dir = glm::vec2(0,0);
-        float step_size = 1.0f; // Step in pixels
+    /* uv is [0,1] terrain position, these function return local position and height  */
+    float get_height_at_uv(float u, float v) {
+        return get_height_bilinear(u*hmap_width,v*hmap_height) * heightmap_scale;
+    }
+    glm::vec3 get_local_pos_from_uv(float u, float v) {
+        u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);
+        return vec3(u-.5f,v-.5f,get_height_at_uv(u,v));
+    }
 
-        while (current_dist < max_dist_pixels) {
-            // 1. Get Gradient
-            glm::vec2 gradient = get_gradient_sobel(current_pos);
-            if (glm::length(gradient) < 0.0001f) gradient = glm::vec2(0, 1);
-            else gradient = glm::normalize(gradient);
+    /* local position is [-.5,.5] terrain position, these function return local position and height  */
+    float get_height_at_local_pos(float x, float y) {
+        if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
+        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
+    }
+    glm::vec2 local_to_uv(glm::vec2 local) { return glm::vec2(local.x-0.5f,local.y-0.5f); }
 
-            // 2. Contour Vector (Perpendicular). 
-            glm::vec2 contour_dir = reverse_polarity ? glm::vec2(gradient.y, -gradient.x) : glm::vec2(-gradient.y, gradient.x);
+    /* Line drawing algorithm */
+    void clear_cache() { cached_path.clear(); }
+    vector<vec3> generate_constant_slope_path(vec3 start, vec2 end, float slope, float step, bool direction = true) {
+        
+        if (!cached_path.empty() && 
+            distance(vec2(start), cached_path_data.start) < 0.001f && 
+            distance(end, cached_path_data.end) < 0.05f && 
+            abs(slope - cached_path_data.slope) < 0.001f &&
+            abs(step - cached_path_data.step) < 0.001f  &&
+            cached_path_data.mode == 0 ) { 
+            return cached_path;
+        }
+        
+        cached_path_data = { vec2(start), end, slope, step, 0 };
+        cached_path.clear();
+        cached_path.push_back(start);
 
-            // 3. Apply Grade
-            float angle = std::atan(grade); 
-            glm::vec2 move_dir = contour_dir * std::cos(angle) + gradient * std::sin(angle);
-            move_dir = glm::normalize(move_dir);
+        int max_safety_steps = 2000;
+        float min_dist_to_end = length(end - vec2(start));
+        int min_dist_index = 0;
 
-            // 4. Continuity check
-            if (out_path.size() > 1 && glm::length(last_dir) > 0 && glm::dot(move_dir, last_dir) < 0) {
-                 break; 
+        for(int i = 0; i < max_safety_steps; i++) {
+            /* get target direction */
+            vec2 end_dir = (end-vec2(cached_path.back()));
+            vec2 end_dir_normalise = end_dir / length(end_dir);
+            
+            /* add new point */
+            float target_height = cached_path.back().z + step*slope;
+            vec2 next_point = follow_slope_gradient(vec2(cached_path.back()) + end_dir_normalise*step, target_height);
+            cached_path.push_back( vec3(next_point, get_height_at_local_pos(next_point.x,next_point.y)) );
+
+            /* calculate final distances */
+            float dist = length(end-vec2(cached_path.back()));
+            float points_dist = length(vec2(cached_path.back())-vec2(cached_path[cached_path.size()-2]));
+            if (dist < min_dist_to_end) {
+                min_dist_to_end = dist;
+                min_dist_index = cached_path.size()-1;
             }
 
-            // 5. Step
-            current_pos += move_dir * step_size;
+            /* exit conditions */
+            if (points_dist < 0.5*step) break;
+            if (dist > min_dist_to_end + step*20.f) break; // heuristic
+            if (dist < step) break;
+        }
 
-            // Bounds check (keep slightly inside to avoid bilinear sampling errors)
-            if (current_pos.x < 1.0f || current_pos.x >= hmap_width - 1.0f || 
-                current_pos.y < 1.0f || current_pos.y >= hmap_height - 1.0f) break;
+        /* Path smoothing */
+        if (cached_path.size() > 2) {
+            vector<vec3> smoothed = cached_path;
+            for(int i = 1; i < cached_path.size() - 1; i++) {
+                smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
+            }
+            cached_path = smoothed;
+        }
 
-            out_path.push_back(pixel_to_local(current_pos));
+        if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
+        return cached_path;
+    }
+    vector<vec3> generate_auto_slope_path(vec3 start, vec2 end, float max_slope, float step, bool direction = true) {
+        
+        if (!cached_path.empty() && 
+            distance(vec2(start), cached_path_data.start) < 0.001f && 
+            distance(end, cached_path_data.end) < 0.05f && 
+            abs(max_slope - cached_path_data.slope) < 0.001f &&
+            abs(step - cached_path_data.step) < 0.001f  && 
+            cached_path_data.mode == 1 ) { 
+            return cached_path;
+        }
+        
+        cached_path_data = { vec2(start), end, max_slope, step, 1 };
+        cached_path.clear();
+        cached_path.push_back(start);
+
+        // Calculate automatic slope
+        float end_z = get_height_at_local_pos(end.x, end.y);
+        float total_dist = length(end - vec2(start));
+        float needed_slope = (end_z - start.z) / (total_dist > 0.001f ? total_dist : 1.f);
+        float actual_slope = glm::clamp(needed_slope, -max_slope, max_slope);
+
+        int max_safety_steps = 2000;
+        float min_dist_to_end = length(end - vec2(start));
+        int min_dist_index = 0;
+
+        for(int i = 0; i < max_safety_steps; i++) {
+            /* get target direction */
+            vec2 end_dir = (end-vec2(cached_path.back()));
+            vec2 end_dir_normalise = end_dir / length(end_dir);
             
-            last_dir = move_dir;
-            current_dist += step_size;
-        }
-    }
+            /* add new point */
+            float target_height = cached_path.back().z + step*actual_slope;
+            vec2 next_point = follow_slope_gradient(vec2(cached_path.back()) + end_dir_normalise*step, target_height);
+            cached_path.push_back( vec3(next_point, get_height_at_local_pos(next_point.x,next_point.y)) );
 
-    // Generates a bidirectional path centered at start_pos_local
-    std::vector<glm::vec3> generate_bidirectional_path(glm::vec3 start_pos_local, float grade, float max_length_pixels) {
-        std::vector<glm::vec3> full_path;
-        
-        // Ensure start pos is clamped to local bounds [-0.5, 0.5] before converting to pixels
-        start_pos_local.x = glm::clamp(start_pos_local.x, -0.5f, 0.5f);
-        start_pos_local.y = glm::clamp(start_pos_local.y, -0.5f, 0.5f);
+            /* calculate final distances */
+            float dist = length(end-vec2(cached_path.back()));
+            float points_dist = length(vec2(cached_path.back())-vec2(cached_path[cached_path.size()-2]));
+            if (dist < min_dist_to_end) {
+                min_dist_to_end = dist;
+                min_dist_index = cached_path.size()-1;
+            }
 
-        glm::vec2 start_pixels = local_to_pixel(start_pos_local);
-
-        // 1. Trace "Forward" 
-        std::vector<glm::vec3> path_fwd;
-        trace_single_direction(start_pixels, grade, max_length_pixels, false, path_fwd);
-
-        // 2. Trace "Backward" 
-        std::vector<glm::vec3> path_bwd;
-        trace_single_direction(start_pixels, grade, max_length_pixels, true, path_bwd);
-
-        // 3. Merge: [Reversed Backward] -> [Start] -> [Forward]
-        std::reverse(path_bwd.begin(), path_bwd.end());
-        
-        full_path.insert(full_path.end(), path_bwd.begin(), path_bwd.end());
-        full_path.push_back(start_pos_local); // Explicitly add the exact start point
-        full_path.insert(full_path.end(), path_fwd.begin(), path_fwd.end());
-
-        return full_path;
-    }
-
-    std::vector<glm::vec3> get_active_path_segment(glm::vec3 start_pos_local, glm::vec3 cursor_pos_local, float grade = 0.f, bool force_recalc = false) {
-        
-        // Recalculate the "Rail" if needed
-        if (cached_full_path.empty() || force_recalc) {
-            // Approx 1000 pixels length trace
-            cached_full_path = generate_bidirectional_path(start_pos_local, grade, 2000.f); 
+            /* exit conditions */
+            if (points_dist < 0.5*step) break;
+            if (dist > min_dist_to_end + step*20.f) break; // heuristic
+            if (dist < step) break;
         }
 
-        if (cached_full_path.empty()) return {};
-
-        // Find indices in the cached path
-        float min_dist_cursor = FLT_MAX;
-        float min_dist_start = FLT_MAX;
-        int closest_idx = -1;
-        int start_idx = -1;
-
-        for(int i=0; i<cached_full_path.size(); i++) {
-            float d_cursor = glm::distance(cached_full_path[i], cursor_pos_local);
-            if (d_cursor < min_dist_cursor) { min_dist_cursor = d_cursor; closest_idx = i; }
-
-            // Re-find start index (it's in the middle of the array)
-            float d_start = glm::distance(cached_full_path[i], start_pos_local);
-            if (d_start < min_dist_start) { min_dist_start = d_start; start_idx = i; }
+        /* Path smoothing */
+        if (cached_path.size() > 2) {
+            vector<vec3> smoothed = cached_path;
+            for(int i = 1; i < cached_path.size() - 1; i++) {
+                smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
+            }
+            cached_path = smoothed;
         }
 
-        std::vector<glm::vec3> segment;
-        if (start_idx == -1 || closest_idx == -1) return segment;
-
-        // Extract segment
-        if (start_idx <= closest_idx) {
-            for (int i = start_idx; i <= closest_idx; i++) segment.push_back(cached_full_path[i]);
-        } else {
-            for (int i = start_idx; i >= closest_idx; i--) segment.push_back(cached_full_path[i]);
-        }
-
-        return segment;
-    }
-
-    void clear_cache() {
-        cached_full_path.clear();
-    }
-    
-    // --- Public access for Terrain class ---
-    // Returns LOCAL position [-0.5, 0.5] relative to plane center
-    glm::vec3 get_local_pos_from_uv(float u, float v) {
-        float px = u * hmap_width;
-        float py = v * hmap_height;
-        return pixel_to_local(glm::vec2(px, py));
+        //points.pop_back(); // last point was further from end than second to last, remove it
+        if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
+        return cached_path;
     }
 
 private:
-    // --- Helpers ---
-
+    // this function returns the height value for any x,y given in fractional pixel values
+    // eg. pixel value of x=1.5f is average height from pixel 1 and pixel 2 together
     float get_height_bilinear(float x, float y) {
+        if (!height_data_loaded) return 0.f;
         int x0 = (int)x; int y0 = (int)y;
         int x1 = std::min(x0 + 1, hmap_width - 1);
         int y1 = std::min(y0 + 1, hmap_height - 1);
@@ -186,41 +211,43 @@ private:
     float get_raw_height(int x, int y) {
         if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) return 0.0f;
         return (float)height_data[y * hmap_width + x] / 255.0f;
-    }
+    }    
 
-    glm::vec2 get_gradient_sobel(glm::vec2 pos) {
-        float h_l = get_height_bilinear(pos.x - 1, pos.y);
-        float h_r = get_height_bilinear(pos.x + 1, pos.y);
-        float h_d = get_height_bilinear(pos.x, pos.y - 1);
-        float h_u = get_height_bilinear(pos.x, pos.y + 1);
-        return glm::vec2(h_r - h_l, h_u - h_d);
-    }
+    vec2 follow_slope_gradient(vec2 pos, float target_height) {
+        const int MAX_ITERATIONS = 8; // Reduced iterations for performance
+        const float DISTANCE_EPSILON = 0.001f; 
+        float eps = 1.0f / (float)hmap_width; 
 
-    glm::vec2 local_to_pixel(glm::vec3 local_pos) {
-        // Map [-0.5, 0.5] to [0, width]
-        float x_norm = (local_pos.x) + 0.5f; 
-        float y_norm = (local_pos.y) + 0.5f;
-        return glm::vec2(x_norm * hmap_width, y_norm * hmap_height);
-    }
+        for (int i = 0; i < MAX_ITERATIONS; i++) {
+            float current_h = get_height_at_local_pos(pos.x, pos.y);
+            float diff = target_height - current_h;
 
-    glm::vec3 pixel_to_local(glm::vec2 pixel_pos) {
-        float x_norm = pixel_pos.x / (float)hmap_width;
-        float y_norm = pixel_pos.y / (float)hmap_height;
-        
-        // Sample height (0.0 to 1.0)
-        float height_norm = get_height_bilinear(pixel_pos.x, pixel_pos.y);
-        
-        // Map 0-1 back to Local Plane Coordinates [-0.5, 0.5]
-        float x_local = x_norm - 0.5f;
-        float y_local = y_norm - 0.5f;
-        
-        // IMPORTANT: We do NOT multiply by World Scale here if the object is a child of the terrain.
-        // We only multiply by the heightmap intensity scale relative to the plane width.
-        // Assuming hm.scale represents the Z-height relative to a unit plane:
-        float z_local = height_norm * heightmap_scale; 
+            if (abs(diff) < DISTANCE_EPSILON) return pos;
 
-        return glm::vec3(x_local, y_local, z_local);
+            float h_x1 = get_height_at_local_pos(pos.x + eps, pos.y);
+            float h_x2 = get_height_at_local_pos(pos.x - eps, pos.y);
+            float grad_x = (h_x1 - h_x2) / (2.0f * eps);
+
+            float h_y1 = get_height_at_local_pos(pos.x, pos.y + eps);
+            float h_y2 = get_height_at_local_pos(pos.x, pos.y - eps);
+            float grad_y = (h_y1 - h_y2) / (2.0f * eps);
+
+            vec2 gradient(grad_x, grad_y);
+            float grad_len_sq = dot(gradient, gradient);
+
+            if (grad_len_sq < 0.000001f) break; // Flat terrain
+
+            // Limit step size to avoid shooting off into infinity on flat slopes
+            vec2 offset = gradient * (diff / grad_len_sq);
+            float offset_len = length(offset);
+            if(offset_len > 0.05f) offset = (offset / offset_len) * 0.05f; // Cap jump size
+
+            pos += offset;
+            pos = clamp(pos, vec2(-0.5f), vec2(0.5f));
+        }
+        return pos;
     }
+    
 };
 
 #endif

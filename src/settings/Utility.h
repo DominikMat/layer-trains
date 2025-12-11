@@ -27,3 +27,8 @@ void print_vector_v3 (std::vector<glm::vec3> v, const char* name) {
 void print_v3 (glm::vec3 v, const char* name = "Vector") {
     std::cout << name << ": (" << v.x << ", " << v.y << ", " << v.z << ")" << std::endl;
 }
+
+// #define print (a) std::cout << a << std::endl;
+// #define print2 (a,b) std::cout << a << b << std::endl;
+// #define print3 (a,b,c) std::cout << a << b << c << std::endl;
+// #define print4 (a,b,c,d) std::cout << a << b << c << d << std::endl;

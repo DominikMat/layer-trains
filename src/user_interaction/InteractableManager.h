@@ -3,6 +3,7 @@
 
 #include "shaders/Shader.h" // The base class for all renderable entities
 #include "rendering/Camera.h" // The base class for all renderable entities
+#include "World.h" // The base class for all renderable entities
 #include "Interactable.h" // The base class for all renderable entities
 #include <vector>
 #include <memory>   // Required for std::unique_ptr

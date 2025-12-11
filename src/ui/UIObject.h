@@ -25,20 +25,25 @@ public:
     float scr_height = SCR_HEIGHT;
 
     UIObject(glm::vec2 size, UIAnchor anchor = UIAnchor::CENTER, glm::vec2 anchor_offset = glm::vec2(0.f))
-        : Object(glm::vec3(get_anchor_position(anchor)+anchor_offset, 0.f), vec3(size,1.f)), anchor(anchor), anchor_offset(anchor_offset)
+        : anchor(anchor), anchor_offset(anchor_offset), Object(get_object_anchored_position(anchor, anchor_offset),vec3(size,1.f))
     {}
     UIObject(glm::vec2 position, glm::vec2 size)
         : Object(glm::vec3(position,0.f), glm::vec3(size,1.f)), anchor(UIAnchor::BOTTOM_LEFT), anchor_offset(vec2(0.f))
     {}
 
     void set_anchor (UIAnchor anchor, vec2 anchor_offset) {
-        position = vec3(get_anchor_position(anchor) + anchor_offset,0.f);
         this->anchor = anchor;
         this->anchor_offset = anchor_offset;
+        position = get_object_anchored_position(anchor, anchor_offset);
+        set_screenspace();
+    }
+
+    virtual void set_parent(Object *parent) override {
+        Object::set_parent(parent);
+        if (is_screen_object) position = get_object_anchored_position(anchor, anchor_offset);
     }
 
     vec2 get_anchor_position(UIAnchor anchor) {
-
         float relative_size_x = has_parent ? parent->size.x : scr_width;
         float relative_size_y = has_parent ? parent->size.y : scr_height;
 
@@ -56,9 +61,16 @@ public:
         }
         return anchor_position_offset + (has_parent ? parent->position : vec2(scr_width/2,scr_height/2));
     }
+    vec3 get_object_anchored_position(UIAnchor anchor, vec2 anchor_offset) {
+        return vec3(get_anchor_position(anchor) + anchor_offset,0.f);
+    }
 
     void update_screen_size(float w, float h) {
         scr_width = w; scr_height = h;
+    }
+
+    void recalculate_ui_position() {
+        position = get_object_anchored_position(anchor, anchor_offset);
     }
 };
 

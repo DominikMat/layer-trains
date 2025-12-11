@@ -16,11 +16,11 @@ class Object
 public:
     vec3 position;
     vec3 size;
-    vec3 rotation;
-    bool visible;
+    vec3 rotation = vec3(0.f);
+    bool visible = true;
     Shader *shader;
 
-    vec4 colour = Colour::PINK;
+    vec4 colour = Colour::PINK, tint_colour = Colour::WHITE;
     float opacity = 1.f;
     bool uses_texture = false;
 
@@ -36,18 +36,17 @@ public:
     virtual ~Object() = default;
 
     Object(vec3 pos = vec3(0.0f), vec3 size = vec3(1.0f))
-        : position(pos), size(size), rotation(vec3(0.0f)), visible(true) {
+        : position(pos), size(size) {
 
-        shader = &ShaderManager::get_default_world_shader();
+        shader = new DEFAULT_WORLD_SHADER;
     }
-    // Object(const Object&) = delete; // Blokada kopiowania
-    // Object& operator=(const Object&) = delete;
 
     // necessary functions
     virtual void render() = 0;
     virtual void construct() = 0;
     virtual void configure_render_properties() {
         shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
+        shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, opacity));
         shader->setBool("useTexture", uses_texture);
     };
     virtual void disable_render_properties() {};
@@ -75,10 +74,10 @@ public:
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.z), V3_Z);
         local_transform_matrix = glm::scale(local_transform_matrix, this->size);
     }
-    virtual void calculate_transform_matrix() { // Dodano virtual
+    virtual void calculate_transform_matrix() {
         calculate_local_transform();
-
-        if (has_parent && !is_screen_object) {
+ 
+        if (has_parent && !is_screen_object) { // screen objects use UIObject class to position themselves to parent
             global_transform_matrix = parent->get_transform() * local_transform_matrix;
         } else {
             global_transform_matrix = local_transform_matrix;
@@ -88,16 +87,18 @@ public:
     // basic fucntions
     mat4 get_transform() {    return global_transform_matrix; }
     void set_visible(bool is_visible) { visible = is_visible; }
-    void set_parent(Object *parent) { has_parent = true; this->parent = parent; }
+    virtual void set_parent(Object *parent) { has_parent = true; this->parent = parent; }
     void set_transparency (float alpha) { opacity = glm::clamp(alpha, 0.f, 1.f); }
     void set_colour (vec3 new_colour) { colour = vec4(new_colour, 1.f); }
     void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; } }
-    void set_texture (Texture tex) { uses_texture = true; shader->setTexture(tex); }
-    void set_shader (Shader *s) { shader = s; }
+    void set_tint_colour (vec3 new_colour) { tint_colour = vec4(new_colour, 1.f); }
+    void set_tint_colour (vec4 new_colour) { tint_colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a*colour.a; } }
+    void set_texture (Texture *tex) { uses_texture = true; shader->addTexture(tex); shader->use(); shader->setInt("texture", shader->get_last_loaded_tex_slot()); }
+    virtual void set_shader (Shader *s) { shader = s; }
     void set_screenspace() { is_screen_object = true; }
     void enable_shader() { shader->use(); }
-    void update_transform() { shader->setMatrix("transform", global_transform_matrix); }
-
+    virtual void update_transform() { shader->setMatrix("transform", global_transform_matrix); }
+    virtual int get_id() { return -1; }
 };
 
 #endif // OBJECT_H

@@ -107,6 +107,10 @@ public:
         return !glfwWindowShouldClose(this->window);
     }
 
+    vec2 get_size() {
+        return vec2(scr_width, scr_height);
+    }
+
 private:
     static void framebuffer_size_callback(GLFWwindow* window, int width, int height){
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

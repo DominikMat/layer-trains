@@ -4,8 +4,9 @@ out vec4 FragColor;
 
 uniform sampler2D image;
 uniform vec4 colour;
+uniform vec4 tint_colour;
 uniform bool useTexture;
-uniform bool isText; // Nowa flaga: czy renderujemy tekst?
+uniform bool isText;
 
 void main()
 {
@@ -15,15 +16,15 @@ void main()
         vec4 sampled = vec4(1.0, 1.0, 1.0, texture(image, TexCoord).r);
         
         // Mieszamy kolor tekstu z kształtem litery (alpha)
-        FragColor = colour * sampled;
+        FragColor = colour * tint_colour * sampled;
     } 
     else if (useTexture) {
         // Zwykła tekstura (np. ikona) * tint koloru
-        FragColor = texture(image, TexCoord) * colour;
+        FragColor = texture(image, TexCoord) * tint_colour;
     } 
     else {
         // Zwykły panel (tylko kolor)
-        FragColor = colour;
+        FragColor = colour * tint_colour;
     }
     
     // Odrzuć w pełni przezroczyste piksele (opcjonalne)

@@ -27,11 +27,10 @@ private:
 
 
 public:
-    vec4 colour;
-
     Panel(vec4 colour = Colour::WHITE, vec2 pos = vec2(SCR_WIDTH/2,SCR_HEIGHT/2), vec2 size = vec2(SCR_WIDTH/2,SCR_HEIGHT/2)) 
-        : UIObject(pos, size), colour(colour)
-    {}
+        : UIObject(pos, size){
+        set_colour(colour);
+    }
 
     void construct() override {
         glGenVertexArrays(1, &this->VAO);
@@ -80,23 +79,6 @@ public:
         glDeleteBuffers(1, &VBO);
         glDeleteBuffers(1, &EBO);
     }
-
-    void configure_render_properties() override {
-        shader->setVec4("colour", colour);
-    }
 };
-
-// inline const float Panel::vertices[] = {
-//     // positions         // tex coords
-//     -0.5f, -0.5f, 0.0f,   0.0f, 0.0f, // 0
-//      0.5f, -0.5f, 0.0f,   1.0f, 0.0f, // 1
-//      0.5f,  0.5f, 0.0f,   1.0f, 1.0f, // 2
-//     -0.5f,  0.5f, 0.0f,   0.0f, 1.0f  // 3
-// };
-
-// inline const unsigned int Panel::indices[] = {
-//     0, 1, 2,
-//     2, 3, 0
-// };
 
 #endif

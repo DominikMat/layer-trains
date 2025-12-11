@@ -2,8 +2,8 @@
 #define TERRAINDATA_H
 
 #define MAX_TAG_AMOUNT 16
-#define SNOW_FALLOFF_RANGE 1000.f // Distance above snow level where snow covers everything
-#define SNOW_MAX_STEEPNESS 0.065f  // How flat ground must be for snow at the lowest level
+#define SNOW_FALLOFF_RANGE 700.f // Distance above snow level where snow covers everything
+#define SNOW_MAX_STEEPNESS 0.15f  // How flat ground must be for snow at the lowest level
 
 
 enum TerrainTagType {
@@ -45,7 +45,7 @@ const TerrainData terrain_transalpine = {
     /* maximum_height_reach: */ 2500.f,
     /* vertical_scale: */ 295.07f / 1024.f,
     /* water_level_height: */ 0.f,
-    /* snow_level_height: */ 1800.f,
+    /* snow_level_height: */ 1500.f,
 
     {
         { 0.7f, 0.01f, "Level Start", TerrainTagType::LEVEL_START },
