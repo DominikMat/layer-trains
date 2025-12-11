@@ -66,9 +66,9 @@ public:
     virtual void recalculate_path(vec3 start, vec3 end, float slope_value=0.f) = 0;
 
     void create_new_line_segment() {
-        lines.push_back(new Line(LINE_THICKNESS));
+        lines.push_back(new Line(PATH_THICKNESS));
         Line *l = lines.at(lines.size()-1);
-        l->set_colour( CONTOUR_LINE_COLOUR );
+        l->set_colour( PATH_COLOUR );
         l->set_parent(terrain->terrain_obj);
         l->move(CONTOUR_LINE_HEGHT_OFFSET);
         w->place(l);

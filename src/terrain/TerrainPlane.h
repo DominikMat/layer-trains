@@ -53,7 +53,7 @@ public:
         // --- Terrain contour lines ---
         shader->setFloat("iso_line_spacing", ISO_LINE_SPACING);
         shader->setFloat("iso_line_thickness", ISO_LINE_THICKNESS);
-        shader->setVec3("iso_line_colour", CONTOUR_LINE_COLOUR);
+        shader->setVec4("iso_line_colour", CONTOUR_LINE_COLOUR);
 
         // --- Terrain colour pallete ---
         shader->addTexture(new GRADIENT_ELEVATION); shader->setInt("elevation_gradient",shader->get_last_loaded_tex_slot());

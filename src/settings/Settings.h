@@ -27,7 +27,7 @@
 #define ISO_LINE_SPACING 100.f // spacing of minor contouor lines in [m]
 // #define CONTOUR_LINE_MAJOR_THICKNESS_MULTIPLER 3.f 
 // #define CONTOUR_LINE_MAJOR_FREQUENCY 10 // every x minors there is a major
-#define CONTOUR_LINE_COLOUR glm::vec3(0.0f)
+#define CONTOUR_LINE_COLOUR vec4(0.f,0.f,0.f,0.7f)
 #define CONTOUR_LINE_HEGHT_OFFSET V3_Z * 0.0025f
 #define CONTOUR_LINE_SCALING 1.01f
 
@@ -44,8 +44,6 @@
 #define CURSOR_INNER_RADIUS 0.01f
 #define CURSOR_OUTER_RADIUS 0.02f
 #define CONTOUR_LINE_TOLERANCE 0.01f
-
-#define LINE_THICKNESS 5.f
 
 #define NEW_LINE_SEGMENT_V2 vec2(-10000.f, -10000.f)
 #define NEW_LINE_SEGMENT_V3 vec3(-10000.f, -10000.f, -10000.f)
@@ -65,3 +63,5 @@
 #define INTERACTABLE_INTERACT_DISTANCE 0.045f
 
 #define PATH_DRAW_SLOPE_CHANGE_SPEED .1f
+#define PATH_COLOUR Colour::PURPLE
+#define PATH_THICKNESS 8.f

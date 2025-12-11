@@ -1,6 +1,10 @@
 #ifndef TERRAINDATA_H
 #define TERRAINDATA_H
 
+#include <unordered_map>
+#include "glm/glm.hpp"
+#include "ColourData.h"
+
 #define MAX_TAG_AMOUNT 16
 #define SNOW_FALLOFF_RANGE 700.f // Distance above snow level where snow covers everything
 #define SNOW_MAX_STEEPNESS 0.15f  // How flat ground must be for snow at the lowest level
@@ -93,7 +97,7 @@ enum GreenRegions {
     GREEN_NONE = 0,
 };
 
-const std::unordered_map<int, vec4> BLUE_REGION_COLOURS = {
+const std::unordered_map<int, glm::vec4> BLUE_REGION_COLOURS = {
     { BlueRegions::BLUE_RESERVED12, Colour::TRANSPARENT }, // Interactable (Invisible on map, logic handled separately)
     { BlueRegions::NATURE_RESERVE, Colour::GREEN }, // Nature Reserve (Dark Green tint)
     { BlueRegions::CITY, Colour::YELLOW }, // City Area (Grey-Blue tint)
@@ -111,10 +115,10 @@ const std::unordered_map<int, vec4> BLUE_REGION_COLOURS = {
     { BlueRegions::BLUE_RESERVED11,   Colour::TRANSPARENT },  // Default (No tint)
     { BlueRegions::BLUE_NONE,   Colour::TRANSPARENT }  // Default (No tint)
 };
-const std::unordered_map<int, vec4> GREEN_REGION_COLOURS = {
+const std::unordered_map<int, glm::vec4> GREEN_REGION_COLOURS = {
     { GreenRegions::GREEN_RESERVED0, Colour::TRANSPARENT }, // Forest
-    { GreenRegions::FORREST, vec4(0.76f, 0.70f, 0.50f, 1.0f) }, // Sand
-    { GreenRegions::SAND, vec4(0.00f, 0.30f, 0.70f, 1.0f) }, // Water
+    { GreenRegions::FORREST, glm::vec4(0.76f, 0.70f, 0.50f, 1.0f) }, // Sand
+    { GreenRegions::SAND, glm::vec4(0.00f, 0.30f, 0.70f, 1.0f) }, // Water
     { GreenRegions::WATER,   Colour::SKY_BLUE },  // Default grass/ground
     { GreenRegions::GREEN_RESERVED1,   Colour::TRANSPARENT } , // Default (No tint)
     { GreenRegions::GREEN_RESERVED2,   Colour::TRANSPARENT } , // Default (No tint)
@@ -136,6 +140,6 @@ const std::unordered_map<int, vec4> GREEN_REGION_COLOURS = {
 #define BLUE_REGION_OPACITY 0.15f
 #define GREEN_REGION_OPACITY 0.15f
 
-const vec4 BORDER_COLOUR = vec4(0.f,0.f,0.f,BLUE_REGION_OPACITY*3.f);
+const glm::vec4 BORDER_COLOUR = glm::vec4(0.f,0.f,0.f,BLUE_REGION_OPACITY*3.f);
 
 #endif

@@ -24,7 +24,7 @@ uniform vec3 terrain_boundary_colour;
 uniform float iso_line_spacing;
 uniform float iso_line_thickness;
 uniform float camera_zoom_level;
-uniform vec3 iso_line_colour;    
+uniform vec4 iso_line_colour;    
 
 // --- Terrain colour pallete ---
 uniform sampler2D elevation_gradient;  
@@ -116,13 +116,13 @@ void main(){
     /* Draw iso lines */
     if (!sea_pixel) {
         float base_spacing = 10.0; 
-        float minor = gridLayer(current_elevation, base_spacing, 1.0, 20.0);
-        float medium = gridLayer(current_elevation, base_spacing * 5.0, 2.0, 10.0);
-        float major = gridLayer(current_elevation, base_spacing * 20.0, 4.0, 0.0);
+        float minor = gridLayer(current_elevation, base_spacing * 1.0, 1.5, 20.0);
+        float medium = gridLayer(current_elevation, base_spacing * 5.0, 2.25, 13.0);
+        float major = gridLayer(current_elevation, base_spacing * 20.0, 3.0, 0.0);
         float total_line = max(major, max(medium, minor));
         
         if (steepness < 0.001) total_line = 0.0;
-        colour = mix(colour, iso_line_colour, total_line);
+        colour = mix(colour, iso_line_colour.rgb, total_line*iso_line_colour.a);
     }
 
     /* Draw mouse cursor on Terrain */
