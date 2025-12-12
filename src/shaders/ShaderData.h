@@ -8,6 +8,7 @@
 
 #define VERTEX_LINE_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/vertex_shaders/vertexLine.vs"
 #define FRAGMENT_LINE_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentLine.fs"
+#define GEOMETRY_LINE_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/geometry_shaders/geometryLine.gs"
 
 #define VERTEX_UI_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/vertex_shaders/vertexUI.vs"
 #define FRAGMENT_UI_PATH "C:/Media/Projects/OpenGL/Layer_Trains/src/shaders/fragment_shaders/fragmentUI.fs"

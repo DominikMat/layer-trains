@@ -10,6 +10,7 @@
 #define DEFAULT_WORLD_SHADER Shader(VERTEX_BASIC_PATH, FRAGMENT_BASIC_PATH)
 #define WORLD_UI_SHADER Shader(VERTEX_BASIC_PATH, FRAGMENT_UI_PATH)
 #define SCREEN_UI_SHADER Shader(VERTEX_UI_PATH, FRAGMENT_UI_PATH)
+#define TERRAIN_LINE_SHADER Shader(VERTEX_LINE_PATH, FRAGMENT_LINE_PATH, GEOMETRY_LINE_PATH)
 
 class ShaderManager {
 public:
@@ -29,13 +30,6 @@ public:
         shader.use();
         shader.addTexture(texture); shader.setInt("texture", shader.get_last_loaded_tex_slot());
         shader.addTexture(heightmap_tex); shader.setInt("heightmap", shader.get_last_loaded_tex_slot());
-        return shader;
-    }
-
-    static Shader& get_line_shader(glm::vec3 line_colour) {
-        Shader shader = Shader(VERTEX_LINE_PATH, FRAGMENT_LINE_PATH);
-        shader.use();
-        shader.setVec3("lineColor", line_colour );
         return shader;
     }
     

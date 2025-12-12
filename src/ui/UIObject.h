@@ -21,7 +21,6 @@ public:
 
     bool uses_texture = false;
     Texture *texture = nullptr;
-    glm::vec4 colour = Colour::WHITE;
 
     float scr_width = SCR_WIDTH;
     float scr_height = SCR_HEIGHT;
@@ -86,6 +85,14 @@ public:
     virtual std::vector<Button*> get_buttons() {
         std::vector<Button*> empty;
         return empty;
+    }
+
+    virtual void configure_render_properties() override { 
+        //if (!render_props_changed) return; 
+        shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
+        shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, opacity));
+        shader->setBool("useTexture", uses_texture);    
+        render_props_changed = false;
     }
 };
 

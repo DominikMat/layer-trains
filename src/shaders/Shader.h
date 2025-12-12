@@ -1,21 +1,22 @@
-
-
 #ifndef SHADER_H
 #define SHADER_H
 
 #include <glad/glad.h>
-
 #include <string>
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "textures/Texture.h"
-#include "textures/TextureData.h"
-#include "Heightmap.h"
-#include "settings/Settings.h"
+#include "Settings.h"
+
+// Zakładam istnienie tych plików, jeśli nie masz, usuń include'y poniżej
+// #include "textures/TextureData.h" 
+// #include "Heightmap.h"
+// #include "settings/Settings.h" 
 
 #define MAX_TEXTURE_SLOTS 16
 
@@ -23,95 +24,129 @@ class Shader
 {
 public:
     unsigned int ID;
-
     std::vector<Texture*> textures;
-
     bool heightmap_enabled;
     bool uses_texture = false;
 
-    // --- In your renderer's header file or as global variables ---
-    GLuint worldPosFBO;         // The FBO that will hold our world position data
-    GLuint worldPosTexture;     // The texture attached to the FBO
-    GLuint worldPosDepthRBO;    // A depth buffer for the FBO
+    // --- Globalne zmienne renderera (zostawiam bez zmian) ---
+    GLuint worldPosFBO;          
+    GLuint worldPosTexture;      
+    GLuint worldPosDepthRBO;    
 
-
-    // constructor generates the shader on the fly
+    // Konstruktor teraz przyjmuje opcjonalny 3. argument
     // ------------------------------------------------------------------------
-    Shader(const char* vertexPath, const char* fragmentPath) : heightmap_enabled(false)
+    Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr) 
+        : heightmap_enabled(false)
     {
         textures.clear();
         
-        // 1. retrieve the vertex/fragment source code from filePath
+        // 1. Retrieve the vertex/fragment/geometry source code
         std::string vertexCode;
         std::string fragmentCode;
+        std::string geometryCode;
+
         std::ifstream vShaderFile;
         std::ifstream fShaderFile;
-        // ensure ifstream objects can throw exceptions:
+        std::ifstream gShaderFile;
+
+        // Ensure ifstream objects can throw exceptions:
         vShaderFile.exceptions (std::ifstream::failbit | std::ifstream::badbit);
         fShaderFile.exceptions (std::ifstream::failbit | std::ifstream::badbit);
+        gShaderFile.exceptions (std::ifstream::failbit | std::ifstream::badbit);
+
         try 
         {
-            // open files
+            // Open files
             vShaderFile.open(vertexPath);
             fShaderFile.open(fragmentPath);
             std::stringstream vShaderStream, fShaderStream;
-            // read file's buffer contents into streams
+            
+            // Read buffers
             vShaderStream << vShaderFile.rdbuf();
             fShaderStream << fShaderFile.rdbuf();
-            // close file handlers
+            
+            // Close handlers
             vShaderFile.close();
             fShaderFile.close();
-            // convert stream into string
-            vertexCode   = vShaderStream.str();
+            
+            // Convert to string
+            vertexCode = vShaderStream.str();
             fragmentCode = fShaderStream.str();
+
+            // --- Geometry Shader Loading ---
+            if (geometryPath != nullptr)
+            {
+                gShaderFile.open(geometryPath);
+                std::stringstream gShaderStream;
+                gShaderStream << gShaderFile.rdbuf();
+                gShaderFile.close();
+                geometryCode = gShaderStream.str();
+            }
         }
         catch (std::ifstream::failure& e)
         {
             std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
         }
+
         const char* vShaderCode = vertexCode.c_str();
-        const char * fShaderCode = fragmentCode.c_str();
-        // 2. compile shaders
-        unsigned int vertex, fragment;
-        // vertex shader
+        const char* fShaderCode = fragmentCode.c_str();
+
+        // 2. Compile shaders
+        unsigned int vertex, fragment, geometry;
+
+        // Vertex Shader
         vertex = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vertex, 1, &vShaderCode, NULL);
         glCompileShader(vertex);
         checkCompileErrors(vertex, "VERTEX");
-        // fragment Shader
+
+        // Fragment Shader
         fragment = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fragment, 1, &fShaderCode, NULL);
         glCompileShader(fragment);
         checkCompileErrors(fragment, "FRAGMENT");
-        // shader Program
+
+        // Geometry Shader (Optional)
+        if (geometryPath != nullptr)
+        {
+            const char* gShaderCode = geometryCode.c_str();
+            geometry = glCreateShader(GL_GEOMETRY_SHADER);
+            glShaderSource(geometry, 1, &gShaderCode, NULL);
+            glCompileShader(geometry);
+            checkCompileErrors(geometry, "GEOMETRY");
+        }
+
+        // Shader Program
         ID = glCreateProgram();
         glAttachShader(ID, vertex);
         glAttachShader(ID, fragment);
+        if (geometryPath != nullptr)
+            glAttachShader(ID, geometry);
+            
         glLinkProgram(ID);
         checkCompileErrors(ID, "PROGRAM");
-        // delete the shaders as they're linked into our program now and no longer necessary
+
+        // Delete the shaders as they're linked now
         glDeleteShader(vertex);
         glDeleteShader(fragment);
+        if (geometryPath != nullptr)
+            glDeleteShader(geometry);
     }
-    // activate the shader
-    // ------------------------------------------------------------------------
+
     void use() 
     { 
         glUseProgram(ID); 
         for (int i=0; i<textures.size(); i++) textures[i]->use(i);
     }
-    // utility uniform functions
-    // ------------------------------------------------------------------------
+
     void setBool(const std::string &name, bool value) const
-    {         
+    {          
         glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value); 
     }
-    // ------------------------------------------------------------------------
     void setInt(const std::string &name, int value) const
     { 
         glUniform1i(glGetUniformLocation(ID, name.c_str()), value); 
     }
-    // ------------------------------------------------------------------------
     void setFloat(const std::string &name, float value) const
     { 
         glUniform1f(glGetUniformLocation(ID, name.c_str()), value); 
@@ -134,7 +169,7 @@ public:
     }
     void addTexture(Texture* new_tex){
         if (textures.size() >= MAX_TEXTURE_SLOTS) {
-            std::cout<< "Max number of textures loaded reached! while loading: " << new_tex->texturePath << std::endl;
+            std::cout<< "Max number of textures loaded reached!" << std::endl;
             return;
         } 
         uses_texture = true;
@@ -143,7 +178,7 @@ public:
     int get_last_loaded_tex_slot() {
         return textures.size()-1;
     }
-
+    
     void config_worldpos_buffer() {
         // 2. Create the Framebuffer Object (FBO)
         glGenFramebuffers(1, &worldPosFBO);
@@ -193,8 +228,6 @@ public:
     }
 
 private:
-    // utility function for checking shader compilation/linking errors.
-    // ------------------------------------------------------------------------
     void checkCompileErrors(unsigned int shader, std::string type)
     {
         int success;

@@ -83,8 +83,7 @@ public:
     }
 
     void configure_render_properties() override {
-        // Standard Object Configuration
-        Object::configure_render_properties(); 
+        UIObject::configure_render_properties(); 
 
         glActiveTexture(GL_TEXTURE0);
         shader->setBool("isText", true);

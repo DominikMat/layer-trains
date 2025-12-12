@@ -7,7 +7,7 @@
 #include <vector>
 #include "Terrain.h"
 #include "InputHandler.h"
-#include "Line.h"
+#include "TerrainLine.h"
 
 using namespace glm;
 using namespace std;
@@ -21,22 +21,22 @@ public:
 
     Terrain *terrain;
 
-    Line *current_line;
-    Line *set_line;
+    TerrainLine *current_line;
+    TerrainLine *set_line;
 
     TerrainPathDrawer (Terrain *terrain, World *w, float slope, bool debug_msg = false) 
         : terrain(terrain), debug_msg(debug_msg), slope(slope) {
         
-        current_line = new Line(PATH_THICKNESS);
-        current_line->set_colour( PATH_COLOUR );
+        current_line = new TerrainLine(terrain->terrain_data);
+        //current_line->set_colour( PATH_COLOUR );
         current_line->set_parent(terrain->terrain_obj);
-        current_line->move(CONTOUR_LINE_HEGHT_OFFSET);
+        //current_line->move(CONTOUR_LINE_HEGHT_OFFSET);
         w->place(current_line);
 
-        set_line = new Line(PATH_THICKNESS);
-        set_line->set_colour( PATH_COLOUR );
+        set_line = new TerrainLine(terrain->terrain_data);
+        //set_line->set_colour( PATH_COLOUR );
         set_line->set_parent(terrain->terrain_obj);
-        set_line->move(CONTOUR_LINE_HEGHT_OFFSET);
+        //set_line->move(CONTOUR_LINE_HEGHT_OFFSET);
         w->place(set_line);
     }   
 
