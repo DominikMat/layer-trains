@@ -21,17 +21,16 @@ private:
     unsigned int vao = 0;
     unsigned int vbo = 0;
     std::vector<vec3> points;
-    std::vector<int> line_segment_breaks;
     float line_thickness = 5.f;
 
 public:
     Line(std::vector<vec3> points, float line_thickness = 3.f)
         : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
-    { render_to_world_pos = false; }
+    { render_to_world_pos = false; points.clear(); }
     
     Line(float line_thickness = 3.f)
         : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
-    { render_to_world_pos = false; }
+    { render_to_world_pos = false; points.clear(); }
 
     void construct() override {
         glGenVertexArrays(1, &vao);
@@ -54,38 +53,19 @@ public:
 
         glLineWidth(line_thickness);
         
-        glDrawArrays(GL_LINE_STRIP, 0, line_segment_breaks[0]);
-        for (int i=1; i<line_segment_breaks.size(); i++) 
-            glDrawArrays(GL_LINE_STRIP, line_segment_breaks[i-1]+1, line_segment_breaks[i]-line_segment_breaks[i-1]-1);
+        glDrawArrays(GL_LINE_STRIP, 0, points.size());
        
         glBindVertexArray(0);
         //glEnable(GL_DEPTH_TEST);
     }
 
-    void add_point(vec3 p) {
-        points.push_back(p);
-        if(line_segment_breaks.size() == 0) line_segment_breaks.push_back(points.size());
-        else line_segment_breaks[line_segment_breaks.size()-1] ++;
-    }
-    void set_points(std::vector<vec3> new_points) {
-        line_segment_breaks.clear();
-        for (int i=0; i<new_points.size(); i++) {
-            if (new_points[i] == NEW_LINE_SEGMENT_V3) {
-                line_segment_breaks.push_back(i);
-            }
-        }
-        this->points = new_points;
-        line_segment_breaks.push_back(new_points.size());
-    }
-    void clear_points() {
-        points.clear();
-    }
-    int get_point_num() {
-        return points.size();
-    }
-    vec3 get_last_point() {
-        return points.back();
-    }
+    void add_point(vec3 p) { points.push_back(p); }
+    void add_points(std::vector<vec3> new_points) { for (auto p : new_points) points.push_back(p); }
+    void set_points(std::vector<vec3> new_points) { this->points = new_points; }
+    void clear_points() { points.clear(); }
+    int get_point_num() { return points.size(); }
+    std::vector<vec3> get_points() { return points; }
+    vec3 get_last_point() { return points.back(); }
 
     ~Line() override {
         glDeleteVertexArrays(1, &vao);

@@ -53,6 +53,7 @@ public:
         obj->construct();
         obj->set_shader(&shader);
         obj->set_screenspace();
+        obj->initialize_shader_properties();
 
         // detect and add buttons to seperate array
         Button* button = dynamic_cast<Button*>(obj);

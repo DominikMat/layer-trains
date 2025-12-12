@@ -32,6 +32,7 @@ public:
     mat4 global_transform_matrix, local_transform_matrix;
 
     bool is_screen_object = false;
+    bool render_props_changed = true;
 
     virtual ~Object() = default;
 
@@ -44,12 +45,15 @@ public:
     // necessary functions
     virtual void render() = 0;
     virtual void construct() = 0;
-    virtual void configure_render_properties() {
+    virtual void configure_render_properties() { 
+        //if (!render_props_changed) return; 
         shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
         shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, opacity));
-        shader->setBool("useTexture", uses_texture);
-    };
+        shader->setBool("useTexture", uses_texture);    
+        render_props_changed = false;
+    }
     virtual void disable_render_properties() {};
+    virtual void initialize_shader_properties() {};
 
     // position
     void move(vec3 v){ this->position += v; }
@@ -88,13 +92,13 @@ public:
     mat4 get_transform() {    return global_transform_matrix; }
     void set_visible(bool is_visible) { visible = is_visible; }
     virtual void set_parent(Object *parent) { has_parent = true; this->parent = parent; }
-    void set_transparency (float alpha) { opacity = glm::clamp(alpha, 0.f, 1.f); }
-    void set_colour (vec3 new_colour) { colour = vec4(new_colour, 1.f); }
-    void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; } }
-    void set_tint_colour (vec3 new_colour) { tint_colour = vec4(new_colour, 1.f); }
-    void set_tint_colour (vec4 new_colour) { tint_colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a*colour.a; } }
-    void set_texture (Texture *tex) { uses_texture = true; shader->addTexture(tex); shader->use(); shader->setInt("texture", shader->get_last_loaded_tex_slot()); }
-    virtual void set_shader (Shader *s) { shader = s; }
+    void set_transparency (float alpha) { opacity = glm::clamp(alpha, 0.f, 1.f); render_props_changed = true;  }
+    void set_colour (vec3 new_colour) { colour = vec4(new_colour, 1.f); render_props_changed = true;  }
+    void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; render_props_changed = true;  } }
+    void set_tint_colour (vec3 new_colour) { tint_colour = vec4(new_colour, 1.f); render_props_changed = true;  }
+    void set_tint_colour (vec4 new_colour) { tint_colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a*colour.a; render_props_changed = true; } }
+    void set_texture (Texture *tex) { uses_texture = true; shader->addTexture(tex); shader->use(); shader->setInt("texture", shader->get_last_loaded_tex_slot()); render_props_changed = true; }
+    virtual void set_shader (Shader *s) { shader = s; render_props_changed = true; }
     void set_screenspace() { is_screen_object = true; }
     void enable_shader() { shader->use(); }
     virtual void update_transform() { shader->setMatrix("transform", global_transform_matrix); }

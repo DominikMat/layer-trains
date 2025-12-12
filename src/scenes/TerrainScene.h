@@ -96,8 +96,14 @@ public:
         // check end drawing
         if (user_input->is_left_mouse_clicked() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
-            curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos);
-            create_path_handle_at_pos (curr_path_drawer->get_end_point());
+            Interactable* i = create_path_handle_at_pos (curr_path_drawer->get_end_point());
+            if (i) { 
+                path_system->create_destination(i,true); 
+                path_system->add_link(draw_start_handle_id, i->get_id(), 10.f);
+                curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos);
+                //draw_start_handle_id = i->get_id();
+                //curr_path_drawer->start_drawing_at_pos(end_pos);
+            }
         }
         
         // add handle double click
@@ -163,14 +169,15 @@ public:
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << clicked << std::endl;
     }
 
-    void create_path_handle_at_pos (vec3 local_pos) {
+    Interactable* create_path_handle_at_pos (vec3 local_pos) {
         Interactable *i = interactable_manager->create(
             vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
         );
         float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
         float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
         terrain->attach_to_surface(i, uvx, uvy);
-        cout << "Interactable created, attached to surface at: " << uvx << ", " << uvy << endl;
+        cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << endl;
+        return i;
     }
 
 private:

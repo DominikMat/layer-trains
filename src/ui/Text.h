@@ -35,7 +35,7 @@ public:
     Text(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK, bool centered = false)
         : UIObject(vec2(0), vec2(1)), textString(text), font_scale(font_scale), center_text(centered)
     {
-        this->colour = color;
+        set_colour(color);
         this->uses_texture = true; 
         
         if (!isFontLoaded) {

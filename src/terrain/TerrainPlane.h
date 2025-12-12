@@ -23,7 +23,6 @@ using namespace std;
 
 class TerrainPlane : public Plane
 {
-    bool shaderInitalized = false;
     const TerrainData *td;
 
 public:
@@ -32,11 +31,9 @@ public:
         : Plane(glm::max(td->resolution_x,td->resolution_y),pos,size), td(td), cam(cam)
     {}
 
-    void configure_render_properties() override {
-        //shader->setFloat("camera_zoom_level", cam->get_current_orthographic_zoom());
-
-        if (shaderInitalized) return;
-        else shaderInitalized = true;
+    void initialize_shader_properties() override {
+        //shader->setFloat("camera_zoom_level", cam->get_current_orthographic_zoom())
+        shader->use();
 
         // --- Terrain height data ---
         shader->setFloat("terrain_min_height", td->minimum_height_reach);

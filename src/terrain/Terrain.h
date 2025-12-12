@@ -94,10 +94,6 @@ public:
                 name_tag_obj->set_colour(Colour::BLACK);
                 w->place(name_tag_obj);
             }
-
-            // place objects in world
-            w->place(terrain_obj);
-            w->place(terrain_floor);
         }
 
         // handle shader and camera 
@@ -109,6 +105,10 @@ public:
         // Standard Orientation: Rotated -45 degrees on X, Scaled up 3x
         terrain_obj->rotate(vec3(-90.f, 0.f, 0.f));
         terrain_obj->scale(3.f);
+
+        // place objects in world
+        w->place(terrain_obj);
+        w->place(terrain_floor);
     }
     
     Plane* get_obj() {

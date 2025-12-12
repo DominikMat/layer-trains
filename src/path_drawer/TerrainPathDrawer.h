@@ -20,14 +20,24 @@ public:
     float slope = 0.f;
 
     Terrain *terrain;
-    World *w;
 
-    vector<Line*> lines;
-    Line *current_line_segment = nullptr;
+    Line *current_line;
+    Line *set_line;
 
     TerrainPathDrawer (Terrain *terrain, World *w, float slope, bool debug_msg = false) 
-        : terrain(terrain), debug_msg(debug_msg), w(w), slope(slope) {
-        lines.clear();
+        : terrain(terrain), debug_msg(debug_msg), slope(slope) {
+        
+        current_line = new Line(PATH_THICKNESS);
+        current_line->set_colour( PATH_COLOUR );
+        current_line->set_parent(terrain->terrain_obj);
+        current_line->move(CONTOUR_LINE_HEGHT_OFFSET);
+        w->place(current_line);
+
+        set_line = new Line(PATH_THICKNESS);
+        set_line->set_colour( PATH_COLOUR );
+        set_line->set_parent(terrain->terrain_obj);
+        set_line->move(CONTOUR_LINE_HEGHT_OFFSET);
+        w->place(set_line);
     }   
 
     virtual void update_path (InputHandler *input_handler) {
@@ -40,17 +50,14 @@ public:
 
         if (abs(mouse_pos_local.x) > 0.5f || abs(mouse_pos_local.y) > 0.5f) return;
 
-        recalculate_path(origin_point, mouse_pos_local, slope);
+        recalculate_path(current_line, origin_point, mouse_pos_local, slope);
 
     }
     
     virtual void start_drawing_at_pos (vec3 local_pos) {
         if (abs(local_pos.x) <= 0.5f && abs(local_pos.y) <= 0.5f) {
             drawing_path = true;
-            origin_point = local_pos;
-            
-            create_new_line_segment();
-            
+            origin_point = local_pos;            
             if (debug_msg) std::cout << "Path started." << std::endl;
         }
         
@@ -58,32 +65,23 @@ public:
     
     virtual void end_drawing_at_pos (vec3 local_pos) {
         drawing_path = false;
-        recalculate_path(origin_point, local_pos, slope);
-        
-        if (debug_msg) std::cout << (current_line_segment->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
+        recalculate_path(current_line, origin_point, local_pos, slope);
+
+        if (debug_msg) std::cout << (current_line->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
+
+        set_line->add_points ( current_line->get_points() );
+        current_line->clear_points();
     }
 
-    virtual void recalculate_path(vec3 start, vec3 end, float slope_value=0.f) = 0;
-
-    void create_new_line_segment() {
-        lines.push_back(new Line(PATH_THICKNESS));
-        Line *l = lines.at(lines.size()-1);
-        l->set_colour( PATH_COLOUR );
-        l->set_parent(terrain->terrain_obj);
-        l->move(CONTOUR_LINE_HEGHT_OFFSET);
-        w->place(l);
-        current_line_segment = l;
-    }
+    virtual void recalculate_path(Line* line, vec3 start, vec3 end, float slope_value=0.f) = 0;
 
     void reset() {
-        if (drawing_path) current_line_segment->clear_points();
+        if (drawing_path) current_line->clear_points();
         drawing_path = false;
     }
     void clear_path() {
-        current_line_segment->clear_points();
-        for (auto line_ptr : lines) { delete line_ptr; }
-        lines.clear();
-        current_line_segment = nullptr;
+        current_line->clear_points();
+        set_line->clear_points();
     }
     
     bool is_drawing_path() {
@@ -91,7 +89,7 @@ public:
     }
 
     vec3 get_end_point() {
-        return current_line_segment->get_last_point();
+        return current_line->get_last_point();
     }
 
     void set_slope(float slope) {

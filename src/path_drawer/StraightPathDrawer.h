@@ -22,7 +22,7 @@ public:
     StraightPathDrawer (Terrain *terrain, World *w, bool debug_msg = false) 
         : TerrainPathDrawer(terrain,w,0.f,debug_msg) { }   
 
-    void recalculate_path (vec3 start, vec3 end, float slope) override {
+    void recalculate_path (Line* line, vec3 start, vec3 end, float slope) override {
         float path_dist = glm::length(end-start);
         int point_num = (int)(path_dist / STRAIGHT_PATH_MINIMUM_TERRAIN_STEP) + 2;
         std::vector<vec3> segment; segment.resize(point_num);
@@ -34,7 +34,7 @@ public:
             segment[i].z = terrain->elevation_line_drawer.get_height_at_local_pos(segment[i].x,segment[i].y);
         }
         segment[point_num-1] = end;
-        current_line_segment->set_points(segment);
+        line->set_points(segment);
     }
 };
 
