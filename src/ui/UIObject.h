@@ -1,16 +1,18 @@
 #ifndef UI_OBJECT_H
 #define UI_OBJECT_H
 
-#include "ColourData.h"
 #include <vector>
 #include <algorithm>
 #include <glm/glm.hpp>
+#include "Object.h"
 
 enum class UIAnchor {
     TOP_LEFT,    TOP_CENTER,    TOP_RIGHT,
     MIDDLE_LEFT, CENTER,        MIDDLE_RIGHT,
     BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT,
 };
+
+class Button;
 
 class UIObject : public Object {
 public:
@@ -36,11 +38,15 @@ public:
         this->anchor_offset = anchor_offset;
         position = get_object_anchored_position(anchor, anchor_offset);
         set_screenspace();
+        resize_and_reposition();
     }
 
     virtual void set_parent(Object *parent) override {
         Object::set_parent(parent);
-        if (is_screen_object) position = get_object_anchored_position(anchor, anchor_offset);
+        if (is_screen_object){
+            position = get_object_anchored_position(anchor, anchor_offset);
+            resize_and_reposition();
+        }
     }
 
     vec2 get_anchor_position(UIAnchor anchor) {
@@ -71,6 +77,15 @@ public:
 
     void recalculate_ui_position() {
         position = get_object_anchored_position(anchor, anchor_offset);
+    }
+
+    virtual void resize_and_reposition() {
+        recalculate_ui_position();
+    }
+
+    virtual std::vector<Button*> get_buttons() {
+        std::vector<Button*> empty;
+        return empty;
     }
 };
 

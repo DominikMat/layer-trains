@@ -9,6 +9,7 @@
 #include <sstream>
 #include <iostream>
 #include <vector>
+#include "Object.h"
 #include "UIObject.h"
 #include "ColourData.h"
 

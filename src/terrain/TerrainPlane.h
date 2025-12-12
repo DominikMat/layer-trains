@@ -9,7 +9,7 @@
 #include "world_objects/Object.h"
 #include "world_objects/Plane.h"
 #include "rendering/Camera.h"
-#include "Text.h"
+#include "UIText.h"
 #include "settings/Settings.h"
 #include "ElevationLineDrawer.h"
 #include "InteractableManager.h"

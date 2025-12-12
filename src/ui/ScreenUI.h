@@ -3,7 +3,7 @@
 
 #include "Shader.h"
 #include "Object.h"
-#include "ButtonPanel.h"
+#include "ToolbarPanel.h"
 #include "Camera.h"
 #include "InputHandler.h"
 #include <vector>
@@ -18,7 +18,7 @@ using ButtonCallback = std::function<void(int button_id, bool clicked)>;
 
 class ScreenUI {
 public:
-    std::vector<Object*> objects;
+    std::vector<UIObject*> objects;
     std::vector<Button*> buttons;
     Shader shader;
     Camera camera;
@@ -48,7 +48,7 @@ public:
         glEnable(GL_DEPTH_TEST);
     }
 
-    void place(Object* obj) {
+    void place(UIObject* obj) {
         this->objects.push_back(obj);
         obj->construct();
         obj->set_shader(&shader);
@@ -56,10 +56,8 @@ public:
         obj->initialize_shader_properties();
 
         // detect and add buttons to seperate array
-        Button* button = dynamic_cast<Button*>(obj);
-        if (button) { buttons.push_back(button); return; }
-        ButtonPanel* button_panel = dynamic_cast<ButtonPanel*>(obj);
-        if (button_panel) { for (auto b : button_panel->get_buttons()) { buttons.push_back(b); } return; }
+        vector<Button*> obj_buttons = obj->get_buttons();
+        for (auto b : obj_buttons) buttons.push_back(b);
     }
 
     void check_button_clicked(InputHandler *ih) {

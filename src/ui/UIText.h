@@ -1,5 +1,5 @@
-#ifndef TEXT_H
-#define TEXT_H
+#ifndef UITEXT_H
+#define UITEXT_H
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -20,7 +20,7 @@ struct Character {
     unsigned int Advance;    
 };
 
-class Text : public UIObject {
+class UIText : public UIObject {
 private:
     std::string textString;
     float font_scale; // Renamed to avoid confusion with Object::size (transform scale)
@@ -31,8 +31,7 @@ private:
     static bool isFontLoaded;
 
 public:
-    // Added centered bool. 
-    Text(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK, bool centered = false)
+    UIText(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK, bool centered = false)
         : UIObject(vec2(0), vec2(1)), textString(text), font_scale(font_scale), center_text(centered)
     {
         set_colour(color);
@@ -115,6 +114,7 @@ public:
             float w = ch.Size.x * font_scale;
             float h = ch.Size.y * font_scale;
 
+
             // Z is kept at 0.0f because the Object transform handles 3D placement
             float vertices[6][4] = {
                 { xpos,     ypos + h,   0.0f, 0.0f },            
@@ -155,9 +155,16 @@ public:
         }
         return width;
     }
+    float get_text_max_height() {
+        int height = 0;
+        for (char c : textString) {
+            height = std::max(height, Characters[c].Size.y);
+        }
+        return height * font_scale;
+    }
 };
 
-std::map<GLchar, Character> Text::Characters;
-bool Text::isFontLoaded = false;
+std::map<GLchar, Character> UIText::Characters;
+bool UIText::isFontLoaded = false;
 
 #endif

@@ -46,7 +46,7 @@ public:
     virtual void render() = 0;
     virtual void construct() = 0;
     virtual void configure_render_properties() { 
-        //if (!render_props_changed) return; 
+        //if (!render_props_changed) return; // breaks the ui for some reason??
         shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
         shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, opacity));
         shader->setBool("useTexture", uses_texture);    

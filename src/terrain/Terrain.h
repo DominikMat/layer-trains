@@ -10,7 +10,7 @@
 #include "world_objects/Plane.h"
 #include "TerrainPlane.h"
 #include "rendering/Camera.h"
-#include "Text.h"
+#include "UIText.h"
 #include "settings/Settings.h"
 #include "ElevationLineDrawer.h"
 #include "InteractableManager.h"
@@ -84,7 +84,7 @@ public:
             cout << "Interactable " << tag.name << " detected, attached to surface at: " << tag.uv_x << ", " << tag.uv_y << endl;
 
             if (tag.type == TerrainTagType::NAME_TAG) { // create world space text name tag 
-                Text *name_tag_obj = new Text(tag.name, 1.5f/SCR_WIDTH, Colour::BLACK);
+                UIText *name_tag_obj = new UIText(tag.name, 1.5f/SCR_WIDTH, Colour::BLACK);
                 name_tag_obj->set_shader(new WORLD_UI_SHADER);
                 attach_to_surface(name_tag_obj, tag.uv_x, tag.uv_y);
                 //name_tag_obj->set_size(0.01f);

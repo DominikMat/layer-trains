@@ -24,7 +24,7 @@
 #include "Sphere.h"
 #include "Interactable.h"
 #include "InteractableManager.h"
-#include "Text.h"
+#include "UIText.h"
 #include "ScreenUI.h"
 #include "settings/ColourData.h"
 #include "TerrainPath.h"

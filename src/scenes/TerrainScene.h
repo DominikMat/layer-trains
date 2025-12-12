@@ -10,7 +10,8 @@
 #include "AutoSlopePathDrawer.h"
 #include "PathSystem.h"
 #include "StraightPathDrawer.h"
-#include "ButtonPanel.h"
+#include "ToolbarPanel.h"
+#include "TextPanel.h"
 
 #define curr_path_drawer terrain_path_drawer[current_path_draw_mode]
 
@@ -32,14 +33,9 @@ public:
     int draw_start_handle_id = 0;
 
     PathSystem *path_system;
-
-    /* testing */
-    Text *test_text;
-    Panel *test_panel;
+    TextPanel *slope_display;
+    TextPanel *title_display;
     Interactable *test_interact;
-    Text *slope_text;
-    Panel *slope_panel;
-    /* end testing */
 
     TerrainScene (TerrainData terrain_data, World *w, Camera *c, ScreenUI *s, World *wui, InputHandler *ih) : Scene(w,c,s,wui,ih) {
         interactable_manager = new InteractableManager(world, 
@@ -113,9 +109,8 @@ public:
         
         /* slope value display */
         bool display_slope_info = current_path_draw_mode != ButtonID::MODE_STRAIGHT_PATH;
-        if (display_slope_info) slope_text->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->slope*100.f)) + "%");
-        slope_text->set_visible(display_slope_info);
-        slope_panel->set_visible(display_slope_info);
+        if (display_slope_info) slope_display->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->slope*100.f)) + "%");
+        slope_display->set_visible(display_slope_info);
         
         // prints
         if (user_input->is_left_mouse_double_clicked()) std::cout << "Left Mouse DOUBLE clicked" << std::endl;
@@ -207,27 +202,17 @@ private:
     void init_ui() {
         
         /* Title */
-        test_panel = new Panel(Colour::DARK_GREY, vec2(0), vec2(800, 85));
-        test_panel->set_anchor( UIAnchor::TOP_LEFT, vec2(10,-10) );
-        screen_ui->place( test_panel );
-        test_text = new Text("Layer Trains Prototype ;)", 1.5f, Colour::WHITE);
-        test_text->set_parent(test_panel);
-        test_text->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(15) );
-        test_text->set_colour(Colour::WHITE);
-        screen_ui->place( test_text );
+        title_display = new TextPanel("Layer Trains Prototype ;)", 1.15f, Colour::WHITE, Colour::DARK_GREY, vec2(800, 85));
+        title_display->set_anchor( UIAnchor::TOP_LEFT, vec2(10,-10) );
+        screen_ui->place( title_display );
         
         /* Slope display text */
-        slope_panel = new Panel(Colour::DARK_GREY, vec2(0), vec2(400, 85));
-        slope_panel->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(30,30) );
-        screen_ui->place( slope_panel );
-        slope_text = new Text("Slope: ---%", 1.5f, Colour::WHITE);
-        slope_text->set_parent(slope_panel);
-        slope_text->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(15) );
-        slope_text->set_colour(Colour::WHITE);
-        screen_ui->place( slope_text );
+        slope_display = new TextPanel("Slope: ---%", 0.75f, Colour::WHITE, Colour::DARK_GREY, vec2(400, 85));
+        slope_display->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(30,30) );
+        screen_ui->place( slope_display );
 
-        /* button panel */
-        ButtonPanel* toolbar = new ButtonPanel(vec2(400, 100), 50.0f, 10.0f, vec4(0.2f, 0.2f, 0.2f, 1.0f), Colour::WHITE);        
+        /* toolbar panel */
+        ToolbarPanel* toolbar = new ToolbarPanel(vec2(400, 100), 50.0f, 10.0f, vec4(0.2f, 0.2f, 0.2f, 1.0f), Colour::WHITE);        
         toolbar->set_anchor(UIAnchor::BOTTOM_CENTER, vec2(0,30));
         toolbar->add_button(ButtonID::MODE_STRAIGHT_PATH, false, Colour::PINK);
         toolbar->add_button(ButtonID::MODE_AUTO_SLOPE, false, Colour::PURPLE);

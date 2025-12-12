@@ -105,6 +105,11 @@ public:
         glBindVertexArray(0);
     }
 
+    std::vector<Button*> get_buttons() override { 
+        std::vector<Button*> return_btns = { this };
+        return return_btns; 
+    }
+
     ~Button() override {
         glDeleteVertexArrays(1, &VAO);
         glDeleteBuffers(1, &VBO);

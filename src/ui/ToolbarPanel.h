@@ -1,5 +1,5 @@
-#ifndef BUTTON_PANEL_H
-#define BUTTON_PANEL_H
+#ifndef TOOLBARPANEL_H
+#define TOOLBARPANEL_H
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -10,7 +10,9 @@
 #include "Panel.h"
 #include <vector>
 
-class ButtonPanel : public UIObject {
+
+
+class ToolbarPanel : public UIObject {
 private:
     // Layout settings
     float gap_size;
@@ -26,7 +28,7 @@ private:
     std::vector<Button*> buttons;
 
 public:
-    ButtonPanel(vec2 pos, float button_size, float gap, vec4 background_col, vec4 button_col)
+    ToolbarPanel(vec2 pos, float button_size, float gap, vec4 background_col, vec4 button_col)
         : UIObject(pos, vec2(0, button_size + 2 * gap)), 
           button_size(button_size), gap_size(gap), 
           bg_color(background_col), btn_color(button_col) 
@@ -139,7 +141,7 @@ public:
         }
     } 
 
-    const std::vector<Button*>& get_buttons() { return buttons; }
+    std::vector<Button*> get_buttons() override { return buttons; }
 
     int get_mouse_over_button(int mouse_pixel_x, int mouse_pixel_y) {
         for (auto b : buttons) {
@@ -148,7 +150,7 @@ public:
         return -1;
     }
 
-    ~ButtonPanel() override {
+    ~ToolbarPanel() override {
         delete backgroundRect;
         delete leftCap;
         delete rightCap;
