@@ -132,6 +132,11 @@ public:
     void render() override { std::cout << "Camera compoenent does not have a body so render() is redundant" << std::endl; }
     void construct() override { std::cout << "Camera compoenent does not have a body so construct() is redundant" << std::endl; }
 
+    void clear_dependancies() {
+        dependent_shaders.clear();
+        dependent_shaders_perspective_type.clear();
+    }
+
 private:
     void update_dependent_shader_projection (ProjectionType projection_type) {
         for (int i=0; i<dependent_shaders.size(); i++) {

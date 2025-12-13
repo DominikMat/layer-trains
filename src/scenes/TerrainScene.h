@@ -15,29 +15,35 @@
 
 #define curr_path_drawer terrain_path_drawer[current_path_draw_mode]
 
-enum ButtonID {
-    MODE_STRAIGHT_PATH=0, MODE_ISO_PATH=2, MODE_AUTO_SLOPE=1
-};
 
 class TerrainScene : public Scene
 {
-public:
-    Terrain *terrain;
-    Plane *terrain_obj;
+private:
+    enum ButtonID {
+        MODE_STRAIGHT_PATH=0, MODE_ISO_PATH=2, MODE_AUTO_SLOPE=1,
+    };
+    
     InteractableManager *interactable_manager;
-
+    
+    Terrain *terrain;   
+    Plane *terrain_obj;
+    const TerrainData *terrain_data;
     TerrainPathDrawer *terrain_path_drawer[3];
-
+    
     float last_scroll_value = 1.f;
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
 
     PathSystem *path_system;
     TextPanel *slope_display;
-    TextPanel *title_display;
     Interactable *test_interact;
 
-    TerrainScene (TerrainData terrain_data, World *w, Camera *c, ScreenUI *s, World *wui, InputHandler *ih) : Scene(w,c,s,wui,ih) {
+public:
+
+    TerrainScene (const TerrainData *terrain_data, World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih), terrain_data(terrain_data) {
+    }
+    
+    void init( ) override {
         interactable_manager = new InteractableManager(world, 
             [this](Interactable *i) { 
                 this->interact_callback(i); 
@@ -48,10 +54,8 @@ public:
                 this->on_ui_button_clicked(button_id, state); 
             }
         );
-        terrain = new Terrain(&terrain_data, w, interactable_manager, camera);
-    }
-    
-    void init( ) override {
+        terrain = new Terrain(terrain_data, world, interactable_manager, camera);
+
         // configure terrain object
         terrain_obj = terrain->get_obj();
 
@@ -200,14 +204,8 @@ private:
     }
 
     void init_ui() {
-        
-        /* Title */
-        title_display = new TextPanel("Layer Trains Prototype ;)", 1.15f, Colour::WHITE, Colour::DARK_GREY, vec2(800, 85));
-        title_display->set_anchor( UIAnchor::TOP_LEFT, vec2(10,-10) );
-        screen_ui->place( title_display );
-        
         /* Slope display text */
-        slope_display = new TextPanel("Slope: ---%", 0.75f, Colour::WHITE, Colour::DARK_GREY, vec2(400, 85));
+        slope_display = new TextPanel("Slope: ---%", 0.75f, Colour::WHITE, Colour::DARK_GREY, vec2(400, 85), true, true);
         slope_display->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(30,30) );
         screen_ui->place( slope_display );
 

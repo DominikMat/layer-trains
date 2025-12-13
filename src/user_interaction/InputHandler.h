@@ -45,7 +45,7 @@ public:
         holding_shift = glfwGetKey(glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
 
         // pause 
-        if(glfwGetKey(glfw_window, GLFW_KEY_SPACE) == GLFW_RELEASE) simulation_paused = !simulation_paused;
+        if(glfwGetKey(glfw_window, GLFW_KEY_SPACE) == GLFW_PRESS) simulation_paused = !simulation_paused;
 
         // get mouse position
         double xpos, ypos;

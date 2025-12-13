@@ -22,27 +22,33 @@ int main() {
     camera.set_min_orthographic_zoom(CAMERA_MIN_ZOOM); camera.set_max_orthographic_zoom(CAMERA_MAX_ZOOM);
     World world = World(&camera);
     ScreenUI screen_ui = ScreenUI();
-    World world_ui = World(&camera);
     
     // ==========================================================
     /* Create scenes */
 
-    const int scene_num = 1;
-    Scene* scenes[scene_num] = {
-        new TerrainScene( terrain_transalpine, &world, &camera, &screen_ui, &world_ui, &input_handler)
+    const vector<Scene*> scenes = {
+        new TitleCardScene( &world, &camera, &screen_ui, &input_handler),
+        new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler)
     };
 
     // ==========================================================
     /* Render Loop */
 
-    for (int i=0; i<scene_num; i++){
+    for (int i=0; i<scenes.size(); i++){
+        // remove previous scene objects
+        screen_ui.clear_objects();
+        world.clear_objects();
+        camera.clear_dependancies();
+
+        // init current scene
+        std::cout << std::endl << std::endl << "=============================" << std::endl 
+            << "Starting scene nr " << (i+1) << std::endl << "=============================" << std::endl;
         Scene* current_scene = scenes[i];
         current_scene->init();
-        
         Shader *world_pos_buffer_shader = current_scene->get_world_pos_buffer_shader();
-
+        vec4 bg_col = current_scene->get_background_colour();
+        
         while(current_scene->active()) {
-
             /* Frame time controls  */
             float current_time = (float) glfwGetTime();
             float dt = current_time - last_frame_time;
@@ -60,7 +66,7 @@ int main() {
             /* Render to world position buffer texture */            
             if (world_pos_buffer_shader){
                 glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->worldPosFBO);
-                window.clear(RENDER_BACKGROUND_COLOUR);
+                window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
                 world_pos_buffer_shader->render_to_world_pos_buffer();
                 world.render(true);
             }
@@ -70,13 +76,12 @@ int main() {
 
             /* Final render */
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            window.clear(RENDER_BACKGROUND_COLOUR);
+            window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
             if(world_pos_buffer_shader) {
                 world_pos_buffer_shader->bind_world_pos_buffer();
                 world_pos_buffer_shader->send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
             }
             world.render();
-            world_ui.render();
             screen_ui.render( SCR_WIDTH, SCR_HEIGHT );
 
             window.display(); 

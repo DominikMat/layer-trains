@@ -11,12 +11,10 @@
 using namespace glm;
 
 class Button : public UIObject {
-private:
+protected:
     unsigned int VAO, VBO, EBO;
     bool is_pressed = false, toggle = false;
     vec3 original_scale = vec3(1.0f);
-    
-    // Identifier/Data for your logic to know which button this is
     int id; 
 
 public:
@@ -35,11 +33,11 @@ public:
     // --- Interaction Logic ---
 
     // Trigger visual feedback
-    void set_clicked_state(bool clicked) {
+    virtual void set_clicked_state(bool clicked) {
         is_pressed = clicked && toggle;
         set_tint_colour( clicked ? Colour::BLACK : Colour::WHITE );
     }
-    void set_hover_state(bool hover) {
+    virtual void set_hover_state(bool hover) {
         if (is_pressed) return;
         set_tint_colour( hover ? Colour::DARK_GREY : Colour::WHITE );
     }

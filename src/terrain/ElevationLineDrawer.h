@@ -26,7 +26,8 @@ class ElevationLineDrawer
 {
 private:
     float heightmap_scale;
-    unsigned char* height_data;
+    void* height_data; 
+    bool is_16bit_data;
     int hmap_width, hmap_height;
     bool height_data_loaded = false;
 
@@ -34,10 +35,16 @@ private:
     CachedPathData cached_path_data;
 
 public:
-    ElevationLineDrawer(const char* heightmap_path, float heightmap_scale) : heightmap_scale(heightmap_scale) {
+    ElevationLineDrawer(const char* heightmap_path, float heightmap_scale, bool use_16bit = false) 
+        : heightmap_scale(heightmap_scale), is_16bit_data(use_16bit) 
+    {
         stbi_set_flip_vertically_on_load(true); 
         int width, height, nrChannels;
-        height_data = stbi_load(heightmap_path, &width, &height, &nrChannels, 1);
+        if (is_16bit_data) {
+            height_data = stbi_load_16(heightmap_path, &width, &height, &nrChannels, 1);
+        } else {
+            height_data = stbi_load(heightmap_path, &width, &height, &nrChannels, 1);
+        }
         hmap_width = width; hmap_height = height;
 
         if (!height_data) {
@@ -210,8 +217,22 @@ private:
 
     float get_raw_height(int x, int y) {
         if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) return 0.0f;
-        return (float)height_data[y * hmap_width + x] / 255.0f;
-    }    
+        size_t index = (size_t)y * hmap_width + x;
+
+        if (is_16bit_data) {
+            // Rzutowanie void* na unsigned short* i odczyt 16-bitowej wartości
+            unsigned short* data_16bit = static_cast<unsigned short*>(height_data);
+            unsigned short raw_value = data_16bit[index];
+            // Normalizacja 16-bitowej wartości (0-65535) do float (0.0-1.0)
+            return (float)raw_value / 65535.0f; 
+        } else {
+            // Rzutowanie void* na unsigned char* i odczyt 8-bitowej wartości
+            unsigned char* data_8bit = static_cast<unsigned char*>(height_data);
+            unsigned char raw_value = data_8bit[index];
+            // Normalizacja 8-bitowej wartości (0-255) do float (0.0-1.0)
+            return (float)raw_value / 255.0f;
+        }
+    }   
 
     vec2 follow_slope_gradient(vec2 pos, float target_height) {
         const int MAX_ITERATIONS = 8; // Reduced iterations for performance

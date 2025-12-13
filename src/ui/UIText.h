@@ -25,21 +25,22 @@ private:
     std::string textString;
     float font_scale; // Renamed to avoid confusion with Object::size (transform scale)
     unsigned int VAO, VBO;
-    bool center_text; // Option to center text around the pivot
+    int height_below_writing_line = 0;
     
     static std::map<GLchar, Character> Characters;
     static bool isFontLoaded;
 
 public:
-    UIText(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK, bool centered = false)
-        : UIObject(vec2(0), vec2(1)), textString(text), font_scale(font_scale), center_text(centered)
-    {
+    UIText(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK)
+        : UIObject(vec2(0), vec2(1)), textString(text), font_scale(font_scale) {
         set_colour(color);
         this->uses_texture = true; 
         
         if (!isFontLoaded) {
             loadFont(DEFAULT_FONT); 
         }
+
+        resize_and_reposition();
     }
 
     static void loadFont(const char* fontPath) {
@@ -94,13 +95,8 @@ public:
 
         glBindVertexArray(VAO);
 
-        float x = 0.0f;
-        float y = 0.0f; 
-        
-        if (center_text) {
-            float width = get_text_width();
-            x -= width / 2.0f;
-        }
+        float x = -size.x/2.f;
+        float y = -size.y / 2.0f + height_below_writing_line; 
 
         std::string::const_iterator c;
         for (c = textString.begin(); c != textString.end(); c++) 
@@ -112,6 +108,7 @@ public:
 
             float w = ch.Size.x * font_scale;
             float h = ch.Size.y * font_scale;
+
 
 
             // Z is kept at 0.0f because the Object transform handles 3D placement
@@ -145,6 +142,7 @@ public:
 
     void set_text(std::string newText) {
         textString = newText;
+        resize_and_reposition();
     }
 
     float get_text_width() {
@@ -155,11 +153,36 @@ public:
         return width;
     }
     float get_text_max_height() {
-        int height = 0;
+        int max_ascent = 0, max_descent = 0;
         for (char c : textString) {
-            height = std::max(height, Characters[c].Size.y);
+            Character ch = Characters[c];
+
+            // height above writing line
+            if (ch.Bearing.y > max_ascent) { max_ascent = ch.Bearing.y; }
+
+            // height below writing line
+            int descent = ch.Size.y - ch.Bearing.y;
+            if (descent > max_descent) { max_descent = descent; }
         }
-        return height * font_scale;
+        height_below_writing_line = max_descent * font_scale;
+        return (max_ascent + max_descent) * font_scale;
+    }
+
+    void resize_and_reposition() override {
+        float width = get_text_width();
+        float height = get_text_max_height();
+        set_size(vec3(width,height,1.f));
+        recalculate_ui_position();
+    }
+
+    // override the transform calculation to NOT set the scale (it is handled by the texture already)
+    void calculate_local_transform() override {
+        local_transform_matrix = mat4(1.0f);
+        local_transform_matrix = glm::translate(local_transform_matrix, this->position);
+        local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.x), V3_X);
+        local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.y), V3_Y);
+        local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.z), V3_Z);
+        local_transform_matrix = glm::scale(local_transform_matrix, vec3(1.f));
     }
 };
 

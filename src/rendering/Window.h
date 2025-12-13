@@ -25,6 +25,7 @@
 #include "Interactable.h"
 #include "InteractableManager.h"
 #include "UIText.h"
+#include "TitleCardScene.h"
 #include "ScreenUI.h"
 #include "settings/ColourData.h"
 #include "TerrainPath.h"

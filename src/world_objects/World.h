@@ -42,6 +42,10 @@ public:
         obj->initialize_shader_properties();
         camera->set_orthographic(obj->shader);
     }
+
+    void clear_objects() {
+        objects.clear();
+    }
 };
 
 #endif // WORLD_H

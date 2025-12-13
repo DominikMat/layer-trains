@@ -38,6 +38,7 @@ namespace Colour {
     // --- Palette ---
     const vec4 TERRAIN_SIDE_COLOUR = vec4(43/255.f, 37/255.f, 29/255.f, 1.f); // greyish brown 'rgba(43, 37, 29, 1)'
     const vec4 SNOW_COLOUR = vec4(1.f,1.f,1.f,0.75f); // greyish brown 'rgba(180, 180, 180, 1)'
+    const vec4 DEFAULT_RENDER_BACKGROUND = vec4(132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f);
 }
 
 #endif // COLOURDATA_H

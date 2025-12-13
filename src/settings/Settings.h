@@ -5,9 +5,6 @@
 #define SCR_HEIGHT 1080 * SCR_DECREASE_MULT
 #define WINDOW_TITLE "Layer Trains"
 
-// palette
-#define RENDER_BACKGROUND_COLOUR 132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f
-
 // camera
 #define CAMERA_FOV 55.f
 #define CAMERA_NEAR_CLIP_PLANE 0.1f

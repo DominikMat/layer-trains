@@ -1,29 +1,25 @@
-#ifndef TextPanel_H
-#define TextPanel_H
+#ifndef TextButton_H
+#define TextButton_H
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <string>
 
-#include "Panel.h"
+#include "Button.h"
 #include "UIText.h"
 
 using namespace glm;
 
-class TextPanel : public Panel
+class TextButton : public Button
 {
 public:
+    const vec2 button_relative_size = vec2(1.1f);
     UIText *text_obj;
-    vec2 padding;
-    bool scale_to_text, center_text;
-    int padding_left_px;
 
-    TextPanel(std::string text_str, float font_scale, vec4 text_colour, vec4 panel_colour, vec2 size, bool scale_to_text = true, 
-        bool center = false, float padding_left_px = 10, vec2 padding_px = vec2(10), vec2 pos = vec2(0.f))
-        :   Panel(panel_colour, pos, size), padding(padding_px), padding_left_px(padding_left_px), 
-            scale_to_text(scale_to_text), center_text(center)         
-    {
+    TextButton(const char* text_str, float font_scale, vec4 text_colour, int button_id, bool button_toggle, vec2 position=vec2(0.f))
+        : Button(button_id, button_toggle, position, 0.f, Colour::TRANSPARENT) {
+    
         text_obj = new UIText(text_str, font_scale, text_colour);
         text_obj->set_parent(this);
         text_obj->set_screenspace();
@@ -32,12 +28,12 @@ public:
     }
     
     void construct() override {
-        Panel::construct();
+        Button::construct();
         text_obj->construct();
     }
 
     void set_shader(Shader *s) override {
-        Panel::set_shader(s);
+        Button::set_shader(s);
         text_obj->set_shader(s);
         text_obj->initialize_shader_properties();
     }
@@ -45,7 +41,7 @@ public:
     void render() override {
         if (!visible) return;
 
-        Panel::render();
+        Button::render();
 
         text_obj->calculate_transform_matrix();   
         text_obj->enable_shader();
@@ -63,12 +59,20 @@ public:
     }
 
     void resize_and_reposition() override {
-        if (text_obj->size.x > size.x || scale_to_text) set_size(vec3(text_obj->size.x+(2.f*padding.x),size.y,size.z));
-        if (text_obj->size.y > size.y || scale_to_text) set_size(vec3(size.x,text_obj->size.y+(2.f*padding.y),size.z));
-
+        
+        set_size(text_obj->size * vec3(button_relative_size,1.f));
         recalculate_ui_position();
-        if (center_text) text_obj->set_anchor( UIAnchor::CENTER, vec2(0.f) );
-        else text_obj->set_anchor( UIAnchor::MIDDLE_LEFT, vec2(padding_left_px, 0.f) );
+
+        text_obj->set_anchor(UIAnchor::CENTER, vec2(0));        
+    }
+
+    void set_clicked_state(bool clicked) override {
+        is_pressed = clicked && toggle;
+        text_obj->set_tint_colour( clicked ? Colour::DARK_GREY : Colour::WHITE );
+    }
+    void set_hover_state(bool hover) override {
+        if (is_pressed) return;
+        text_obj->set_tint_colour( hover ? Colour::BLACK : Colour::WHITE );
     }
 };
 

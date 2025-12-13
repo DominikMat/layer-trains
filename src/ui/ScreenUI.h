@@ -75,6 +75,10 @@ public:
     void set_button_click_callback(ButtonCallback callback) {
         button_callback = callback;
     }
+
+    void clear_objects() {
+        objects.clear();
+    }
 };
 
 #endif // ScreenUI_H

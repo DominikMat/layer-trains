@@ -70,7 +70,7 @@ public:
     void set_size(float s){ this->size = vec3(s,s,s); }
 
     // transform calculations
-    void calculate_local_transform() {
+    virtual void calculate_local_transform() {
         local_transform_matrix = mat4(1.0f);
         local_transform_matrix = glm::translate(local_transform_matrix, this->position);
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.x), V3_X);
