@@ -20,7 +20,8 @@ class TerrainScene : public Scene
 {
 private:
     enum ButtonID {
-        MODE_STRAIGHT_PATH=0, MODE_ISO_PATH=2, MODE_AUTO_SLOPE=1,
+        MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
+        CLICK_MENU_CREATE_PATH_HANDLE = 11, 
     };
     
     InteractableManager *interactable_manager;
@@ -37,6 +38,9 @@ private:
     PathSystem *path_system;
     TextPanel *slope_display;
     Interactable *test_interact;
+
+    UIList *click_menu;
+    vec3 reference_pos_terrain_local;
 
 public:
 
@@ -89,12 +93,13 @@ public:
         curr_path_drawer->update_path(user_input);
 
         // process interactable objects
-        vec3 mouse_terrain_local_pos = vec3(glm::inverse(terrain_obj->get_transform()) * vec4(user_input->get_mouse_position_world(), 1.f));
-        interactable_manager->process_all(mouse_terrain_local_pos, user_input->is_left_mouse_clicked());
+        vec3 mouse_pos_world = user_input->get_mouse_position_world();
+        vec3 mouse_terrain_local_pos = vec3(glm::inverse(terrain_obj->get_transform()) * vec4(mouse_pos_world, 1.f));
+        interactable_manager->process_all(mouse_terrain_local_pos, user_input->is_left_mouse_pressed_up());
         interactable_manager->resize_on_zoom(camera->get_current_orthographic_zoom()); 
         
         // check end drawing
-        if (user_input->is_left_mouse_clicked() && curr_path_drawer->is_drawing_path() 
+        if (user_input->is_left_mouse_pressed_up() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
             Interactable* i = create_path_handle_at_pos (curr_path_drawer->get_end_point());
             if (i) { 
@@ -106,20 +111,17 @@ public:
             }
         }
         
-        // add handle double click
-        if (user_input->is_left_mouse_double_clicked() && !curr_path_drawer->is_drawing_path()) {
-            create_path_handle_at_pos (mouse_terrain_local_pos);
-        }
-        
         /* slope value display */
         bool display_slope_info = current_path_draw_mode != ButtonID::MODE_STRAIGHT_PATH;
         if (display_slope_info) slope_display->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->slope*100.f)) + "%");
         slope_display->set_visible(display_slope_info);
-        
-        // prints
-        if (user_input->is_left_mouse_double_clicked()) std::cout << "Left Mouse DOUBLE clicked" << std::endl;
-        if (user_input->is_middle_mouse_double_clicked()) std::cout << "middle Mouse DOUBLE clicked" << std::endl;
-        if (user_input->is_right_mouse_double_clicked()) std::cout << "right Mouse DOUBLE clicked" << std::endl;
+    
+        /* click menu logic */
+        if ((user_input->is_right_mouse_double_clicked() || user_input->is_left_mouse_double_clicked()) && !click_menu->visible) {
+            click_menu_change_visible(true, mouse_pos_world, mouse_terrain_local_pos);
+        } else if ((user_input->is_left_mouse_pressed_down() || user_input->is_right_mouse_pressed_down()) && click_menu->visible) {
+            if (!click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) click_menu_change_visible(false);
+        }
     }
 
     Shader* get_world_pos_buffer_shader() override {
@@ -161,6 +163,11 @@ public:
             case ButtonID::MODE_AUTO_SLOPE:
             case ButtonID::MODE_ISO_PATH:
                 current_path_draw_mode = (int)id; 
+                break;
+
+            case ButtonID::CLICK_MENU_CREATE_PATH_HANDLE:
+                create_path_handle_at_pos(reference_pos_terrain_local);
+                click_menu_change_visible(false);
                 break;
         }
         terrain_path_drawer[current_path_draw_mode]->reset(); 
@@ -216,6 +223,40 @@ private:
         toolbar->add_button(ButtonID::MODE_AUTO_SLOPE, false, Colour::PURPLE);
         toolbar->add_button(ButtonID::MODE_ISO_PATH, false, Colour::SKY_BLUE);
         screen_ui->place(toolbar);
+
+        /* click menu */
+        click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        const float click_menu_font_size = 0.3f;
+        click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_PATH_HANDLE, false) );
+        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, 3, false) );
+        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, 4, false) );
+        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, 5, false) );
+        click_menu->set_visible(false);
+        screen_ui->place( click_menu );
+    }
+
+    void click_menu_change_visible(bool state, vec3 mouse_world=vec3(0), vec3 mouse_local=vec3(0)) {
+        // enable
+        if (state){
+            vec2 mouse_pos_px = user_input->get_mouse_position_pixels(); mouse_pos_px.y *= -1;
+            click_menu->set_anchor(UIAnchor::TOP_LEFT, mouse_pos_px + vec2(5,-5));
+            click_menu->recalculate_layout();
+            click_menu->set_visible(true);
+            if (terrain->terrain_shader) {
+                terrain->terrain_shader->use();
+                terrain->terrain_shader->setVec3("reference_point_pos", mouse_world);
+                terrain->terrain_shader->setBool("draw_reference", true);
+                reference_pos_terrain_local = mouse_local;
+            }
+        }
+        // disable
+        if (!state) { 
+            click_menu->set_visible(false);
+            if (terrain->terrain_shader) {
+                terrain->terrain_shader->use();
+                terrain->terrain_shader->setBool("draw_reference", false);
+            }
+        }
     }
 };
 

@@ -226,7 +226,7 @@ public:
         setFloat("u_circleInnerRadius", inner_raduis);  
         setFloat("u_circleOuterRadius", outer_radius);
     }
-
+    
 private:
     void checkCompileErrors(unsigned int shader, std::string type)
     {

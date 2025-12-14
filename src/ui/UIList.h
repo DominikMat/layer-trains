@@ -140,6 +140,13 @@ public:
         }
     }
 
+    void set_visible(bool state) override {
+        Object::set_visible(state);
+        for(auto* b : buttons) {
+            b->set_visible(state); // disable button interaction if list not visible
+        }
+    }
+
     std::vector<UIObject*> get_items() { return items; }
     std::vector<Button*> get_buttons() override { return buttons; }
     UIObject* get_item(int i) { return i > 0 && i <items.size() ? items[i] : nullptr; }

@@ -63,7 +63,7 @@ public:
     void check_button_clicked(InputHandler *ih) {
         vec2 mouse_pixel_pos = ih->get_mouse_position_pixels_inv_y();
         for (auto b : buttons) {
-            if (b->is_mouse_over(mouse_pixel_pos.x, mouse_pixel_pos.y) && ih->is_left_mouse_clicked()) { // this way because is_mouse_over if true set the hover state automaticall
+            if (b->is_mouse_over(mouse_pixel_pos) && ih->is_left_mouse_pressed_up()) { // this way because is_mouse_over if true set the hover state automaticall
 
                 b->set_clicked_state(!b->is_toggle() || !b->get_pressed_state());
                 if (button_callback) button_callback(b->get_id(), !b->is_toggle() || b->get_pressed_state());

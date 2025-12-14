@@ -143,13 +143,6 @@ public:
 
     std::vector<Button*> get_buttons() override { return buttons; }
 
-    int get_mouse_over_button(int mouse_pixel_x, int mouse_pixel_y) {
-        for (auto b : buttons) {
-            if (b->is_mouse_over(mouse_pixel_x, mouse_pixel_y)) return b->get_id();
-        }
-        return -1;
-    }
-
     ~ToolbarPanel() override {
         delete backgroundRect;
         delete leftCap;

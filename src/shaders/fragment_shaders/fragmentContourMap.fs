@@ -7,7 +7,7 @@ out vec4 FragColor;
 // --- Mouse position drawing ---
 uniform bool u_renderWorldPos;
 uniform sampler2D world_pos_texture; // Tekstura z Pass 1
-uniform vec2 u_mouseCoords;        // Mysz w [0, 1]
+uniform vec2 u_mouseCoords;         // Mysz w [0, 1]
 uniform float u_circleOuterRadius; // np. 10.0
 uniform float u_circleInnerRadius; // np. 8.0
 uniform sampler2D Texture;
@@ -49,8 +49,13 @@ uniform float snow_level_height;
 uniform float snow_falloff_range;
 uniform float snow_max_steepness;
 
+// --- Reference point drawing ---
+uniform vec3 reference_point_pos;
+uniform bool draw_reference;
+
 /* Colours */
 const vec3 cursor_colour = vec3(0.0, 0.2, 1.0); // blue
+const vec3 reference_colour = vec3(1.0,89/255.f,0); // 'rgba(255, 89, 0, 1)'
 
 /* Functions */
 float gridLayer(float height, float spacing, float thickness, float zoom_fade_start);
@@ -129,6 +134,12 @@ void main(){
     vec3 mouseWorldPos = texture(world_pos_texture, u_mouseCoords).rgb;
     float dist = distance(v_worldPos, mouseWorldPos);
     colour = dist > u_circleInnerRadius && dist < u_circleOuterRadius ? cursor_colour : colour;
+
+    /* Draw mouse cursor on Terrain */
+    if (draw_reference) {
+        float dist = distance(v_worldPos, reference_point_pos);
+        colour = dist > u_circleInnerRadius && dist < u_circleOuterRadius ? reference_colour : colour;
+    }
 
     /* Final Colour */
     FragColor = vec4(colour, 1.0);

@@ -90,7 +90,7 @@ public:
     
     // basic fucntions
     mat4 get_transform() {    return global_transform_matrix; }
-    void set_visible(bool is_visible) { visible = is_visible; }
+    virtual void set_visible(bool is_visible) { visible = is_visible; }
     virtual void set_parent(Object *parent) { has_parent = true; this->parent = parent; }
     void set_transparency (float alpha) { opacity = glm::clamp(alpha, 0.f, 1.f); render_props_changed = true;  }
     void set_colour (vec3 new_colour) { colour = vec4(new_colour, 1.f); render_props_changed = true;  }

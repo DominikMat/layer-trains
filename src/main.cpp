@@ -34,7 +34,7 @@ int main() {
     // ==========================================================
     /* Render Loop */
 
-    for (int i=0; i<scenes.size(); i++){
+    for (int i=1; i<scenes.size(); i++){
         // remove previous scene objects
         screen_ui.clear_objects();
         world.clear_objects();

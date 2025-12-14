@@ -17,7 +17,8 @@ enum DoubleClickState {
 };
 
 struct MouseClick {
-    bool is_clicked = false;
+    bool is_pressed_up = false;
+    bool is_pressed_down = false;
     bool is_double_clicked = false;
     bool is_held = false;
 
@@ -98,15 +99,18 @@ public:
     }
 
     // mouse state getters
-    bool is_left_mouse_clicked() { return mouse_left.is_clicked; }
+    bool is_left_mouse_pressed_up() { return mouse_left.is_pressed_up; }
+    bool is_left_mouse_pressed_down() { return mouse_left.is_pressed_down; }
     bool is_left_mouse_held() { return mouse_left.is_held; }
     bool is_left_mouse_double_clicked() { return mouse_left.is_double_clicked; }
 
-    bool is_middle_mouse_clicked() { return mouse_middle.is_clicked; }
+    bool is_middle_mouse_pressed_up() { return mouse_middle.is_pressed_up; }
+    bool is_middle_mouse_pressed_down() { return mouse_middle.is_pressed_down; }
     bool is_middle_mouse_held() { return mouse_middle.is_held; }
     bool is_middle_mouse_double_clicked() { return mouse_middle.is_double_clicked; }
 
-    bool is_right_mouse_clicked() { return mouse_right.is_clicked; }
+    bool is_right_mouse_pressed_up() { return mouse_right.is_pressed_up; }
+    bool is_right_mouse_pressed_down() { return mouse_right.is_pressed_down; }
     bool is_right_mouse_held() { return mouse_right.is_held; }
     bool is_right_mouse_double_clicked() { return mouse_right.is_double_clicked; }
 
@@ -124,7 +128,8 @@ private:
         bool just_pressed = !was_held && state->is_held;
         bool just_released = was_held && !state->is_held;
 
-        state->is_clicked = just_released; // is_clicked true on key released (one frame)
+        state->is_pressed_up = just_released; // is_clicked true on key released (one frame)
+        state->is_pressed_down = just_pressed; // is_clicked true on key pressed (one frame)
         
         /* DOUBLE CLICK LOGIC */
         

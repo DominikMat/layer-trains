@@ -94,6 +94,17 @@ public:
         shader->setBool("useTexture", uses_texture);    
         render_props_changed = false;
     }
+
+    virtual bool is_mouse_over(vec2 mouse_pixel_pos) {
+        if (!visible) return false;
+        
+        float left   = position.x - (size.x / 2.0f);
+        float right  = position.x + (size.x / 2.0f);
+        float top    = position.y + (size.y / 2.0f);
+        float bottom = position.y - (size.y / 2.0f);
+        
+        return (mouse_pixel_pos.x >= left && mouse_pixel_pos.x <= right && mouse_pixel_pos.y >= bottom && mouse_pixel_pos.y <= top);
+    }
 };
 
 #endif

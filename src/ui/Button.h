@@ -48,13 +48,8 @@ public:
 
     /* click detection */
     // Simple AABB Collision Detection in Pixel Space
-    bool is_mouse_over(double mouse_pixel_x, double mouse_pixel_y) {
-        float left   = position.x - (size.x / 2.0f);
-        float right  = position.x + (size.x / 2.0f);
-        float top    = position.y + (size.y / 2.0f);
-        float bottom = position.y - (size.y / 2.0f);
-        
-        bool mouse_over = (mouse_pixel_x >= left && mouse_pixel_x <= right && mouse_pixel_y >= bottom && mouse_pixel_y <= top);
+    bool is_mouse_over(vec2 mouse_pixel_pos) override {
+        bool mouse_over = UIObject::is_mouse_over(mouse_pixel_pos);
         set_hover_state(mouse_over);
         return mouse_over;
     }
