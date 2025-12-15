@@ -7,7 +7,6 @@
 #include <glm/glm.hpp>
 #include "Scene.h"
 #include "MatchSlopePathDrawer.h"
-#include "TerrainPath.h"
 #include "AutoSlopePathDrawer.h"
 #include "PathSystem.h"
 #include "StraightPathDrawer.h"
@@ -38,7 +37,7 @@ private:
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
 
-    PathSystem *path_system;
+    TerrainPathSystem *path_system;
     TextPanel *slope_display;
     Interactable *test_interact;
 
@@ -73,15 +72,15 @@ public:
         interactable_manager->add(test_interact);
         
         // --- Path drawer ---
-        terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, world, true);
-        terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, world, 1.f, true);
-        terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, world, 0.25f, true);
+        terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, true);
+        terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, 1.f, true);
+        terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, 0.25f, true);
 
         // --- config path system ----
-        path_system = new PathSystem();
+        path_system = new TerrainPathSystem(terrain, interactable_manager);
         for (auto i : interactable_manager->get_current_interactables()) {
-            if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
-            std::cout << "added destination: " << i->name << std::endl; }
+            // if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
+            // std::cout << "added destination: " << i->name << std::endl; }
         }
 
         // ==========================================================
@@ -104,14 +103,10 @@ public:
         // check end drawing
         if (user_input->is_left_mouse_pressed_up() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
-            Interactable* i = create_path_handle_at_pos (vec3(curr_path_drawer->get_end_point(),0.f));
-            if (i) { 
-                path_system->create_destination(i,true); 
-                path_system->add_link(draw_start_handle_id, i->get_id(), 10.f);
-                curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos);
-                //draw_start_handle_id = i->get_id();
-                //curr_path_drawer->start_drawing_at_pos(end_pos);
-            }
+            
+            int new_handle_id = path_system->create_path_handle_at_pos(mouse_terrain_local_pos);
+            TerrainLinkData new_path = curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos, new_handle_id);
+            path_system->add_link(new_path);
         }
         
         /* slope value display */
@@ -135,20 +130,17 @@ public:
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
                 if (!curr_path_drawer->is_drawing_path()) {
-                    curr_path_drawer->start_drawing_at_pos(interactable->position);
-                    //user_input->reset_scroll_value();
+                    curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id());
                     interactable->disable();
-                    draw_start_handle_id = interactable->get_id();
                 }
                 else {
-                    //user_input->reset_scroll_value();
-                    curr_path_drawer->end_drawing_at_pos(interactable->position);
+                    TerrainLinkData new_link = curr_path_drawer->end_drawing_at_pos(interactable->position, interactable->get_id());
+                    path_system->add_link(new_link);                    
                     last_scroll_value = user_input->get_scroll_value();
-                    path_system->add_link(draw_start_handle_id,interactable->get_id(),10.f); // TODO len calc
 
-                    std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
-                    if(path_system->are_necessary_destinations_connected()) 
-                        std::cout << "ALL DESTINATIONS REACHED! :]]]]]]]]]]]]]]]]]]]]] " << std::endl;
+                    // std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
+                    // if(path_system->are_necessary_destinations_connected()) 
+                    //     std::cout << "ALL DESTINATIONS REACHED! :]]]]]]]]]]]]]]]]]]]]] " << std::endl;
                 }
                 break;
             
@@ -169,24 +161,13 @@ public:
                 break;
 
             case ButtonID::CLICK_MENU_CREATE_PATH_HANDLE:
-                create_path_handle_at_pos(reference_pos_terrain_local);
+                path_system->create_path_handle_at_pos(reference_pos_terrain_local);
                 click_menu_change_visible(false);
                 break;
         }
         terrain_path_drawer[current_path_draw_mode]->reset(); 
 
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << clicked << std::endl;
-    }
-
-    Interactable* create_path_handle_at_pos (vec3 local_pos) {
-        Interactable *i = interactable_manager->create(
-            vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
-        );
-        float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
-        float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
-        terrain->attach_to_surface(i, uvx, uvy);
-        cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << endl;
-        return i;
     }
 
 private:

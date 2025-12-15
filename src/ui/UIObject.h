@@ -97,7 +97,7 @@ public:
         return ui_children;
     }
     void add_ui_child(UIObject* child) {
-        ui_children.push_back(child);
+        ui_children.push_back(child); new_child_added = true;
     }
 
     virtual void configure_render_properties() override { 

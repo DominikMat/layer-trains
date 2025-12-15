@@ -116,7 +116,7 @@ int main() {
 #include "Terrain.h"
 #include "InputHandler.h"
 #include "TerrainPathDrawer.h"
-#include "Line.h"
+#include "Line2D.h"
 #include "World.h"
 
 using namespace glm;
@@ -133,8 +133,8 @@ public:
     float last_scroll_value = 1.f;
     bool modify_scroll_on_next_update = false;
 
-    AutoSlopePathDrawer (Terrain *terrain, World *w, float max_slope = 1.f, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,w,max_slope,debug_msg), max_slope(max_slope) { }   
+    AutoSlopePathDrawer (Terrain *terrain, float max_slope = 1.f, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,max_slope,debug_msg), max_slope(max_slope) { }   
 
     void update_path (InputHandler *input_handler) override {
         /* modify max slope */
@@ -147,17 +147,9 @@ public:
         TerrainPathDrawer::update_path(input_handler);
     }
 
-    void recalculate_path (Line* line, vec3 start, vec3 end, float max_slope) override{        
-        // from a given point we can go two direction from any point along the gradient, we generate both and check 
-        // which has end closer to the end position
+    void recalculate_path (Line2D* line, vec2 start, vec2 end, float max_slope) override{        
         float step = CONSTANT_SLOPE_PATH_POINT_STEP;
-        std::vector<vec3> path_left = terrain->elevation_line_drawer.generate_auto_slope_path(start,end,max_slope,step);
-        //std::vector<vec3> path_right = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step,false);
-
-        // choose better path
-        // float dist_left = glm::length(path_left.at(path_left.size()-1) - end);
-        // float dist_right = glm::length(path_right.at(path_right.size()-1) - end);
-        // current_line_segment->set_points(dist_left < dist_right ? path_left : path_right);
+        std::vector<vec2> path_left = terrain->elevation_line_drawer.generate_auto_slope_path(start,end,max_slope,step);
         line->set_points(path_left);
     }
     
@@ -166,77 +158,6 @@ public:
     float get_current_max_slope() { return max_slope; }
     
 };
-
-
-
-    // void update_path (InputHandler *input_handler) override {
-    //     vec3 mouse_pos_world = input_handler->get_mouse_position_world();
-    //     vec4 local_pos_4 = glm::inverse(terrain->terrain_obj.get_transform()) * vec4(mouse_pos_world, 1.f);
-    //     vec3 mouse_pos_local = vec3(local_pos_4);
-
-    //     if (modify_scroll_on_next_update) {
-    //         modify_scroll_on_next_update = false;
-    //         if (drawing_path) {
-    //             scroll_speed_before = input_handler->get_scroll_speed();
-    //             input_handler->set_scroll_speed( PATH_DRAW_SLOPE_CHANGE_SPEED );
-    //             last_scroll_value = input_handler->get_scroll_value();
-    //         } else {
-    //             input_handler->set_scroll_speed( scroll_speed_before );
-    //         }
-    //     }
-    //     if (drawing_path) {
-            
-    //         /* modify slope */
-    //         float delta_scroll = input_handler->get_scroll_value() - last_scroll_value;
-    //         last_scroll_value = input_handler->get_scroll_value();
-    //         float prev_slope = current_slope;
-    //         current_slope = glm::clamp(-max_slope, current_slope + delta_scroll*PATH_DRAW_SLOPE_CHANGE_SPEED, max_slope);
-
-    //         // Update path to mouse
-    //         if (abs(mouse_pos_local.x) <= 0.5f && abs(mouse_pos_local.y) <= 0.5f) {
-    //             std::vector<vec3> segment = terrain->elevation_line_drawer.get_active_path_segment(
-    //                 origin_point, mouse_pos_local, current_slope, prev_slope != current_slope);
-                
-    //             // Lift line slightly to avoid Z-fighting (Local Z up)
-    //             for(auto& p : segment) p.z += 0.005f; 
-                
-    //             current_line_segment->set_points(segment);
-    //         }
-
-    //     }
-    // }
-
-    // void start_drawing_at_pos (vec3 local_pos) override {
-    //     if (abs(local_pos.x) <= 0.5f && abs(local_pos.y) <= 0.5f) {
-    //         drawing_path = true;
-    //         modify_scroll_on_next_update = true;
-    //         origin_point = local_pos;
-
-    //         create_new_line_segment();
-            
-    //         terrain->elevation_line_drawer.clear_cache();
-    //         // Force generate initial segment
-    //         std::vector<vec3> segment = terrain->elevation_line_drawer.get_active_path_segment(origin_point, local_pos, current_slope, true);
-    //         current_line_segment->set_points(segment);
-    //         if (debug_msg) std::cout << "Path started." << std::endl;
-    //     }
-
-    // }
-    
-    // void end_drawing_at_pos (vec3 local_pos) override {
-    //     std::vector<vec3> segment = terrain->elevation_line_drawer.get_active_path_segment(origin_point, local_pos, current_slope, true);
-    //     current_line_segment->set_points(segment);
-        
-    //     drawing_path = false;
-    //     modify_scroll_on_next_update = true;
-    //     end_point = segment[segment.size()-1];
-        
-    //     if (debug_msg) std::cout << (segment.size() > 1 ? "Path set." : "Path empty") << std::endl;
-    // }
-
-    // /* Slope */
-    // void change_slope (float new_slope) { current_slope = new_slope; }
-    // float get_current_slope() { return current_slope; }
 
 #endif
 
@@ -272,8 +193,8 @@ public:
     float last_scroll_value = 1.f;
     bool modify_scroll_on_next_update = false;
 
-    MatchSlopePathDrawer (Terrain *terrain, World *w, float max_slope = 1.f, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,w,0.f,debug_msg), max_slope(max_slope) { }   
+    MatchSlopePathDrawer (Terrain *terrain, float max_slope = 1.f, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,0.f,debug_msg), max_slope(max_slope) { }   
 
     void update_path (InputHandler *input_handler) override {
         /* modify slope */
@@ -286,17 +207,9 @@ public:
         TerrainPathDrawer::update_path(input_handler);
     }
 
-    void recalculate_path (Line* line, vec3 start, vec3 end, float slope) {        
-        // from a given point we can go two direction from any point along the gradient, we generate both and check 
-        // which has end closer to the end position
+    void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) {        
         float step = CONSTANT_SLOPE_PATH_POINT_STEP;
-        std::vector<vec3> path_left = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step);
-        //std::vector<vec3> path_right = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step,false);
-
-        // choose better path
-        // float dist_left = glm::length(path_left.at(path_left.size()-1) - end);
-        // float dist_right = glm::length(path_right.at(path_right.size()-1) - end);
-        // current_line_segment->set_points(dist_left < dist_right ? path_left : path_right);
+        std::vector<vec2> path_left = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step);
         line->set_points(path_left);
     }
     
@@ -470,195 +383,331 @@ public:
 #include <algorithm>
 #include "Terrain.h"
 #include "InputHandler.h"
-#include "Line.h"
+#include "TerrainLine.h"
+#include "Interactable.h"
 
 using namespace glm;
 using namespace std;
 
-struct Destination {
-    const char* name;
-    int id, path_system_id;
-    bool optional;
-    Destination *connected_one = nullptr;
-    Destination *connected_two = nullptr;
+struct TerrainNode {
+    int handle_id;
+    vec2 position;
+    bool intersection = false;
+};
+struct TerrainLinkData {
+    int start_handle_id;
+    int end_handle_id;
+
+    std::vector<vec2> points;
+};
+struct TerrainLink {
+    int start_handle_id;
+    int end_handle_id;
+
+    TerrainLine *line_obj;
 };
 
-// Represents an Edge in the graph
-struct Node {
-    int destination_id_a, destination_id_b;
-    float link_length;
-};
-
-class PathSystem
+class TerrainPathSystem 
 {
-private:
-    vector<Destination*> destinations;
-    vector<Node> path_system; // Functions as an edge list
-    int current_path_system_num = 0;
+protected:
+    Terrain *terrain;
+    InteractableManager *interactable_manager;
 
-    // Helper to build adjacency list for Dijkstra: map<node_id, vector<pair<neighbor_id, cost>>>
-    unordered_map<int, vector<pair<int, float>>> get_adjacency_list() {
-        unordered_map<int, vector<pair<int, float>>> adj;
-        for (const auto& edge : path_system) {
-            adj[edge.destination_id_a].push_back({ edge.destination_id_b, edge.link_length });
-            adj[edge.destination_id_b].push_back({ edge.destination_id_a, edge.link_length });
-        }
-        return adj;
-    }
+    /* graph data */
+    vector<TerrainNode> nodes;
+    vector<TerrainLink> links;
 
 public:
-    PathSystem() {}
+    TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
-    bool is_traversable(int destination_id_a, int destination_id_b) {
-        Destination* a = get_destination(destination_id_a);
-        Destination* b = get_destination(destination_id_b);
-        return a && b && a->path_system_id == b->path_system_id;
+    
+    int create_path_handle_at_pos (vec2 local_pos) {
+        Interactable *i = interactable_manager->create(
+            vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
+        );
+        float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
+        float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
+        terrain->attach_to_surface(i, uvx, uvy);
+        int id = create_new_node(local_pos);
+        cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << ", id: " << id << endl;
+        return id;
+    } 
+
+    void add_link(TerrainLinkData new_link_data) {
+        TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
+        line->set_parent(terrain->terrain_obj);
+        TerrainLink new_link = { new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+        links.push_back(new_link);
     }
 
-    float find_traverse_length(int destination_id_a, int destination_id_b) {
-        // Run Dijkstra but only return distance
-        if (!is_traversable(destination_id_a, destination_id_b)) return -1.0f;
-        
-        // Priority queue stores {cost, node_id}, ordered by lowest cost
-        priority_queue<pair<float, int>, vector<pair<float, int>>, greater<pair<float, int>>> pq;
-        unordered_map<int, float> dist;
-        auto adj = get_adjacency_list();
-
-        // Initialize distances
-        for (auto d : destinations) dist[d->id] = std::numeric_limits<float>::infinity();
-
-        dist[destination_id_a] = 0.0f;
-        pq.push({ 0.0f, destination_id_a });
-
-        while (!pq.empty()) {
-            float d = pq.top().first;
-            int u = pq.top().second;
-            pq.pop();
-
-            if (u == destination_id_b) return d; // Target found
-            if (d > dist[u]) continue;
-
-            for (auto& edge : adj[u]) {
-                int v = edge.first;
-                float weight = edge.second;
-                if (dist[u] + weight < dist[v]) {
-                    dist[v] = dist[u] + weight;
-                    pq.push({ dist[v], v });
-                }
-            }
-        }
-        return -1.0f; // Path not found (shouldn't happen if is_traversable is true)
-    }
-
-    vector<int> find_traverse_nodes(int destination_id_a, int destination_id_b) {
-        if (!is_traversable(destination_id_a, destination_id_b)) return {};
-
-        priority_queue<pair<float, int>, vector<pair<float, int>>, greater<pair<float, int>>> pq;
-        unordered_map<int, float> dist;
-        unordered_map<int, int> prev; // To reconstruct path
-        auto adj = get_adjacency_list();
-
-        for (auto d : destinations) dist[d->id] = std::numeric_limits<float>::infinity();
-
-        dist[destination_id_a] = 0.0f;
-        pq.push({ 0.0f, destination_id_a });
-        prev[destination_id_a] = -1;
-
-        bool found = false;
-
-        while (!pq.empty()) {
-            float d = pq.top().first;
-            int u = pq.top().second;
-            pq.pop();
-
-            if (u == destination_id_b) {
-                found = true;
-                break;
-            }
-
-            if (d > dist[u]) continue;
-
-            for (auto& edge : adj[u]) {
-                int v = edge.first;
-                float weight = edge.second;
-                if (dist[u] + weight < dist[v]) {
-                    dist[v] = dist[u] + weight;
-                    prev[v] = u;
-                    pq.push({ dist[v], v });
-                }
-            }
-        }
-
-        vector<int> path;
-        if (found) {
-            for (int at = destination_id_b; at != -1; at = prev[at]) {
-                path.push_back(at);
-            }
-            std::reverse(path.begin(), path.end());
-        }
-        return path;
-    }
-
-    bool are_necessary_destinations_connected() {
-        int current_path_system_id = -1;
-        for (auto x : destinations) {
-            if (!x->optional) {
-                if (current_path_system_id == -1) current_path_system_id = x->path_system_id;
-                else if (x->path_system_id != current_path_system_id) return false;
-            }
-        }
-        return true;
-    }
-
-    bool are_all_destinations_connected() {
-        int current_path_system_id = -1;
-        for (auto x : destinations) {
-            if (current_path_system_id == -1) current_path_system_id = x->path_system_id;
-            else if (x->path_system_id != current_path_system_id) return false;
-        }
-        return true;
-    }
-
-    void add_link(int id_1, int id_2, float length) {
-        Destination* a = get_destination(id_1);
-        Destination* b = get_destination(id_2);
-
-        if (a && b) {
-            Node n = { a->id, b->id, length };
-            path_system.push_back(n);
-            
-            // Legacy pointer updates (Note: overwrites previous connections)
-            a->connected_two = b;
-            b->connected_one = a;
-
-            // Merging Logic: Propagate the smaller ID to the larger ID group
-            if (a->path_system_id != b->path_system_id) {
-                int old_id = glm::max(a->path_system_id, b->path_system_id);
-                int new_id = glm::min(a->path_system_id, b->path_system_id);
-                
-                for (auto* d : destinations) {
-                    if (d->path_system_id == old_id) {
-                        d->path_system_id = new_id;
-                    }
-                }
-            }
-        }
-    }
-
-    void create_destination(Interactable* i, bool optional = false) {
-        Destination* d = new Destination{ i->name, i->get_id(), current_path_system_num++, optional };
-        destinations.push_back(d);
-    }
-
-    Destination* get_destination(int id) {
-        for (auto d : destinations) {
-            if (d->id == id) return d;
-        }
-        return nullptr;
+    int create_new_node(vec2 local_pos) {
+        TerrainNode new_node = { (int)nodes.size(), local_pos, false };
+        nodes.push_back(new_node);
+        return nodes.back().handle_id;
     }
 };
 
 #endif
+
+// #ifndef PATHSYSTEM_H
+// #define PATHSYSTEM_H
+
+// #include <glad/glad.h>
+// #include <GLFW/glfw3.h>
+// #include <glm/glm.hpp>
+// #include <vector>
+// #include <queue>
+// #include <unordered_map>
+// #include <limits>
+// #include <algorithm>
+// #include "Terrain.h"
+// #include "InputHandler.h"
+// #include "Line.h"
+
+// using namespace glm;
+// using namespace std;
+
+// struct Destination {
+//     const char* name;
+//     int id, path_system_id;
+//     bool optional;
+//     Destination *connected_one = nullptr;
+//     Destination *connected_two = nullptr;
+// };
+
+// // Represents an Edge in the graph
+// struct Node {
+//     int destination_id_a, destination_id_b;
+//     float link_length;
+//     bool intersection = false;
+// };
+// struct TerrainLink {
+//     int link_id = -1;
+//     int start_handle_id = -1;
+//     int end_handle_id = -1;
+//     std::unique_ptr<TerrainLine*> line_object = nullptr;
+// };
+
+// class PathSystem
+// {
+// private:
+//     vector<Destination*> destinations;
+//     vector<Node> nodes;
+//     vector<TerrainLink> path_links;
+//     int current_path_system_num = 0;
+//     int next_path_link_id = 1;
+//     Terrain *terrain;
+
+//     // Helper to build adjacency list for Dijkstra: map<node_id, vector<pair<neighbor_id, cost>>>
+//     unordered_map<int, vector<pair<int, float>>> get_adjacency_list() {
+//         unordered_map<int, vector<pair<int, float>>> adj;
+//         for (const auto& edge : nodes) {
+//             adj[edge.destination_id_a].push_back({ edge.destination_id_b, edge.link_length });
+//             adj[edge.destination_id_b].push_back({ edge.destination_id_a, edge.link_length });
+//         }
+//         return adj;
+//     }
+
+// public:
+//     PathSystem(Terrain *t) : terrain(t) {}
+
+//     TerrainLink* create_path_link(int from_handle_id, int to_handle_id, TerrainLine* line_obj) {
+//         // Calculate length from points (simple sum of segments for now)
+//         float length = 0.0f;
+//         for (size_t i = 0; i < points.size() - 1; ++i) {
+//             length += glm::length(points[i+1] - points[i]);
+//         }
+
+//         TerrainLink link = { 
+//             next_path_link_id++, 
+//             from_handle_id, to_handle_id, 
+//             std::unique_ptr<TerrainLine>(line_obj), 
+//         };
+//         path_links.push_back(std::move(link));
+        
+//         // Update PathSystem graph with the new edge
+//         add_link(from_handle_id, to_handle_id, length, path_links.back().id);
+        
+//         return &path_links.back();
+//     }
+
+//     void delete_path_link(TerrainLink* link) {
+//         if (!link) return;
+//         int path_id = link->id;
+        
+//         // 1. Remove from path_links (geometry)
+//         auto it_link = std::remove_if(path_links.begin(), path_links.end(), 
+//             [path_id](const TerrainLink& l) { return l.id == path_id; });
+//         if (it_link != path_links.end()) path_links.erase(it_link, path_links.end());
+        
+//         // 2. Remove from path_system (graph edges)
+//         auto it_node = std::remove_if(nodes.begin(), nodes.end(), 
+//             [path_id](const Node& n) { return n.terrain_path_id == path_id; });
+//         if (it_node != nodes.end()) nodes.erase(it_node, nodes.end());
+//     }
+
+//     bool is_traversable(int destination_id_a, int destination_id_b) {
+//         Destination* a = get_destination(destination_id_a);
+//         Destination* b = get_destination(destination_id_b);
+//         return a && b && a->path_system_id == b->path_system_id;
+//     }
+
+//     float find_traverse_length(int destination_id_a, int destination_id_b) {
+//         // Run Dijkstra but only return distance
+//         if (!is_traversable(destination_id_a, destination_id_b)) return -1.0f;
+        
+//         // Priority queue stores {cost, node_id}, ordered by lowest cost
+//         priority_queue<pair<float, int>, vector<pair<float, int>>, greater<pair<float, int>>> pq;
+//         unordered_map<int, float> dist;
+//         auto adj = get_adjacency_list();
+
+//         // Initialize distances
+//         for (auto d : destinations) dist[d->id] = std::numeric_limits<float>::infinity();
+
+//         dist[destination_id_a] = 0.0f;
+//         pq.push({ 0.0f, destination_id_a });
+
+//         while (!pq.empty()) {
+//             float d = pq.top().first;
+//             int u = pq.top().second;
+//             pq.pop();
+
+//             if (u == destination_id_b) return d; // Target found
+//             if (d > dist[u]) continue;
+
+//             for (auto& edge : adj[u]) {
+//                 int v = edge.first;
+//                 float weight = edge.second;
+//                 if (dist[u] + weight < dist[v]) {
+//                     dist[v] = dist[u] + weight;
+//                     pq.push({ dist[v], v });
+//                 }
+//             }
+//         }
+//         return -1.0f; // Path not found (shouldn't happen if is_traversable is true)
+//     }
+
+//     vector<int> find_traverse_nodes(int destination_id_a, int destination_id_b) {
+//         if (!is_traversable(destination_id_a, destination_id_b)) return {};
+
+//         priority_queue<pair<float, int>, vector<pair<float, int>>, greater<pair<float, int>>> pq;
+//         unordered_map<int, float> dist;
+//         unordered_map<int, int> prev; // To reconstruct path
+//         auto adj = get_adjacency_list();
+
+//         for (auto d : destinations) dist[d->id] = std::numeric_limits<float>::infinity();
+
+//         dist[destination_id_a] = 0.0f;
+//         pq.push({ 0.0f, destination_id_a });
+//         prev[destination_id_a] = -1;
+
+//         bool found = false;
+
+//         while (!pq.empty()) {
+//             float d = pq.top().first;
+//             int u = pq.top().second;
+//             pq.pop();
+
+//             if (u == destination_id_b) {
+//                 found = true;
+//                 break;
+//             }
+
+//             if (d > dist[u]) continue;
+
+//             for (auto& edge : adj[u]) {
+//                 int v = edge.first;
+//                 float weight = edge.second;
+//                 if (dist[u] + weight < dist[v]) {
+//                     dist[v] = dist[u] + weight;
+//                     prev[v] = u;
+//                     pq.push({ dist[v], v });
+//                 }
+//             }
+//         }
+
+//         vector<int> path;
+//         if (found) {
+//             for (int at = destination_id_b; at != -1; at = prev[at]) {
+//                 path.push_back(at);
+//             }
+//             std::reverse(path.begin(), path.end());
+//         }
+//         return path;
+//     }
+
+//     bool are_necessary_destinations_connected() {
+//         int current_path_system_id = -1;
+//         for (auto x : destinations) {
+//             if (!x->optional) {
+//                 if (current_path_system_id == -1) current_path_system_id = x->path_system_id;
+//                 else if (x->path_system_id != current_path_system_id) return false;
+//             }
+//         }
+//         return true;
+//     }
+
+//     bool are_all_destinations_connected() {
+//         int current_path_system_id = -1;
+//         for (auto x : destinations) {
+//             if (current_path_system_id == -1) current_path_system_id = x->path_system_id;
+//             else if (x->path_system_id != current_path_system_id) return false;
+//         }
+//         return true;
+//     }
+
+//     void add_link(int id_1, int id_2, float length) {
+//         Destination* a = get_destination(id_1);
+//         Destination* b = get_destination(id_2);
+
+//         if (a && b) {
+//             Node n = { a->id, b->id, length };
+//             nodes.push_back(n);
+
+//             // Merging Logic: Propagate the smaller ID to the larger ID group
+//             if (a->path_system_id != b->path_system_id) {
+//                 int old_id = glm::max(a->path_system_id, b->path_system_id);
+//                 int new_id = glm::min(a->path_system_id, b->path_system_id);
+                
+//                 for (auto* d : destinations) {
+//                     if (d->path_system_id == old_id) {
+//                         d->path_system_id = new_id;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     void create_new_node(vec2 local_pos) {
+//         node
+//     }
+
+//     void create_destination(Interactable* i, bool optional = false) {
+//         Destination* d = new Destination{ i->name, i->get_id(), current_path_system_num++, optional };
+//         destinations.push_back(d);
+//     }
+
+//     Interactable* create_path_handle_at_pos (vec3 local_pos) {
+//         Interactable *i = new Interactable(
+//             vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
+//         );
+//         float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
+//         float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
+//         terrain->attach_to_surface(i, uvx, uvy);
+//         int id = create_new_node(vec2(local_pos));
+//         cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << ", id: " << id << endl;
+//         return i;
+//     } 
+
+//     Destination* get_destination(int id) {
+//         for (auto d : destinations) {
+//             if (d->id == id) return d;
+//         }
+//         return nullptr;
+//     }
+// };
+
+// #endif
 
 ======================================================================
 *** FILE: path_drawer\StraightPathDrawer.h ***
@@ -685,19 +734,18 @@ using namespace std;
 class StraightPathDrawer : public TerrainPathDrawer
 {
 public:
-    StraightPathDrawer (Terrain *terrain, World *w, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,w,0.f,debug_msg) { }   
+    StraightPathDrawer (Terrain *terrain, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,0.f,debug_msg) { }   
 
-    void recalculate_path (Line* line, vec3 start, vec3 end, float slope) override {
+    void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) override {
         float path_dist = glm::length(end-start);
         int point_num = (int)(path_dist / STRAIGHT_PATH_MINIMUM_TERRAIN_STEP) + 2;
-        std::vector<vec3> segment; segment.resize(point_num);
+        std::vector<vec2> segment; segment.resize(point_num);
 
         segment[0] = start;
         for (int i=1; i<point_num-1; i++) {
             float t = (float)i / (point_num-1);
-            segment[i] = vec3(end.x*t + start.x*(1.f-t), end.y*t + start.y*(1.f-t), 0.f);
-            segment[i].z = terrain->elevation_line_drawer.get_height_at_local_pos(segment[i].x,segment[i].y);
+            segment[i] = vec2(end.x*t + start.x*(1.f-t), end.y*t + start.y*(1.f-t));
         }
         segment[point_num-1] = end;
         line->set_points(segment);
@@ -716,16 +764,17 @@ public:
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <vector>
-#include "Line.h"
+#include "Line2D.h"
 #include "Texture.h"
 #include "TerrainData.h"
 
-class TerrainLine : public Line
+class TerrainLine : public Line2D
 {
+private:
     const TerrainData *td;
 public:
-    TerrainLine(const TerrainData *td) : Line(PATH_THICKNESS), td(td) {
-    }
+    TerrainLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
+    TerrainLine(const TerrainData *td, vector<vec2> points) : Line2D(points, PATH_THICKNESS), td(td) {}
     
     void initialize_shader_properties() override {
         Shader *shader = new TERRAIN_LINE_SHADER;
@@ -754,30 +803,6 @@ public:
 #endif 
 
 ======================================================================
-*** FILE: path_drawer\TerrainPath.h ***
-======================================================================
-
-#ifndef TERRAINPATH_H
-#define TERRAINPATH_H
-
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <vector>
-#include "Terrain.h"
-#include "InputHandler.h"
-#include "Line.h"
-
-using namespace glm;
-using namespace std;
-
-class TerrainPath
-{
-};
-
-#endif
-
-======================================================================
 *** FILE: path_drawer\TerrainPathDrawer.h ***
 ======================================================================
 
@@ -790,7 +815,7 @@ class TerrainPath
 #include <vector>
 #include "Terrain.h"
 #include "InputHandler.h"
-#include "TerrainLine.h"
+#include "PathSystem.h"
 
 using namespace glm;
 using namespace std;
@@ -802,25 +827,16 @@ public:
     bool drawing_path = false, debug_msg = false;
     float slope = 0.f;
 
+    int start_draw_handle;
+
     Terrain *terrain;
-
     TerrainLine *current_line;
-    TerrainLine *set_line;
 
-    TerrainPathDrawer (Terrain *terrain, World *w, float slope, bool debug_msg = false) 
+    TerrainPathDrawer (Terrain *terrain, float slope, bool debug_msg = false) 
         : terrain(terrain), debug_msg(debug_msg), slope(slope) {
         
         current_line = new TerrainLine(terrain->terrain_data);
-        //current_line->set_colour( PATH_COLOUR );
         current_line->set_parent(terrain->terrain_obj);
-        //current_line->move(CONTOUR_LINE_HEGHT_OFFSET);
-        w->place(current_line);
-
-        set_line = new TerrainLine(terrain->terrain_data);
-        //set_line->set_colour( PATH_COLOUR );
-        set_line->set_parent(terrain->terrain_obj);
-        //set_line->move(CONTOUR_LINE_HEGHT_OFFSET);
-        w->place(set_line);
     }   
 
     virtual void update_path (InputHandler *input_handler) {
@@ -837,8 +853,9 @@ public:
 
     }
     
-    virtual void start_drawing_at_pos (vec3 local_pos) {
+    virtual void start_drawing_at_pos (vec3 local_pos, int handle_id) {
         if (abs(local_pos.x) <= 0.5f && abs(local_pos.y) <= 0.5f) {
+            start_draw_handle = handle_id;
             drawing_path = true;
             origin_point = local_pos;            
             if (debug_msg) std::cout << "Path started." << std::endl;
@@ -846,17 +863,20 @@ public:
         
     }
     
-    virtual void end_drawing_at_pos (vec3 local_pos) {
+    virtual TerrainLinkData end_drawing_at_pos (vec3 local_pos, int handle_id) {
         drawing_path = false;
         recalculate_path(current_line, origin_point, local_pos, slope);
 
         if (debug_msg) std::cout << (current_line->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
 
-        set_line->add_points ( current_line->get_points() );
+        TerrainLinkData new_link = {
+            start_draw_handle, handle_id, current_line->get_points()
+        };
         current_line->clear_points();
+        return new_link;
     }
 
-    virtual void recalculate_path(Line* line, vec3 start, vec3 end, float slope_value=0.f) = 0;
+    virtual void recalculate_path(Line2D* line, vec2 start, vec2 end, float slope_value=0.f) = 0;
 
     void reset() {
         if (drawing_path) current_line->clear_points();
@@ -864,14 +884,13 @@ public:
     }
     void clear_path() {
         current_line->clear_points();
-        set_line->clear_points();
     }
     
     bool is_drawing_path() {
         return drawing_path;
     }
 
-    vec3 get_end_point() {
+    vec2 get_end_point() {
         return current_line->get_last_point();
     }
 
@@ -1079,7 +1098,6 @@ private:
 #include "TitleCardScene.h"
 #include "ScreenUI.h"
 #include "settings/ColourData.h"
-#include "TerrainPath.h"
 #include "Scene.h"
 #include "TerrainScene.h"
 #include <string>
@@ -1235,7 +1253,6 @@ public:
 #include <glm/glm.hpp>
 #include "Scene.h"
 #include "MatchSlopePathDrawer.h"
-#include "TerrainPath.h"
 #include "AutoSlopePathDrawer.h"
 #include "PathSystem.h"
 #include "StraightPathDrawer.h"
@@ -1266,7 +1283,7 @@ private:
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
 
-    PathSystem *path_system;
+    TerrainPathSystem *path_system;
     TextPanel *slope_display;
     Interactable *test_interact;
 
@@ -1301,15 +1318,15 @@ public:
         interactable_manager->add(test_interact);
         
         // --- Path drawer ---
-        terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, world, true);
-        terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, world, 1.f, true);
-        terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, world, 0.25f, true);
+        terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, true);
+        terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, 1.f, true);
+        terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, 0.25f, true);
 
         // --- config path system ----
-        path_system = new PathSystem();
+        path_system = new TerrainPathSystem(terrain, interactable_manager);
         for (auto i : interactable_manager->get_current_interactables()) {
-            if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
-            std::cout << "added destination: " << i->name << std::endl; }
+            // if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
+            // std::cout << "added destination: " << i->name << std::endl; }
         }
 
         // ==========================================================
@@ -1332,14 +1349,10 @@ public:
         // check end drawing
         if (user_input->is_left_mouse_pressed_up() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
-            Interactable* i = create_path_handle_at_pos (curr_path_drawer->get_end_point());
-            if (i) { 
-                path_system->create_destination(i,true); 
-                path_system->add_link(draw_start_handle_id, i->get_id(), 10.f);
-                curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos);
-                //draw_start_handle_id = i->get_id();
-                //curr_path_drawer->start_drawing_at_pos(end_pos);
-            }
+            
+            int new_handle_id = path_system->create_path_handle_at_pos(mouse_terrain_local_pos);
+            TerrainLinkData new_path = curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos, new_handle_id);
+            path_system->add_link(new_path);
         }
         
         /* slope value display */
@@ -1363,20 +1376,17 @@ public:
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
                 if (!curr_path_drawer->is_drawing_path()) {
-                    curr_path_drawer->start_drawing_at_pos(interactable->position);
-                    //user_input->reset_scroll_value();
+                    curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id());
                     interactable->disable();
-                    draw_start_handle_id = interactable->get_id();
                 }
                 else {
-                    //user_input->reset_scroll_value();
-                    curr_path_drawer->end_drawing_at_pos(interactable->position);
+                    TerrainLinkData new_link = curr_path_drawer->end_drawing_at_pos(interactable->position, interactable->get_id());
+                    path_system->add_link(new_link);                    
                     last_scroll_value = user_input->get_scroll_value();
-                    path_system->add_link(draw_start_handle_id,interactable->get_id(),10.f); // TODO len calc
 
-                    std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
-                    if(path_system->are_necessary_destinations_connected()) 
-                        std::cout << "ALL DESTINATIONS REACHED! :]]]]]]]]]]]]]]]]]]]]] " << std::endl;
+                    // std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
+                    // if(path_system->are_necessary_destinations_connected()) 
+                    //     std::cout << "ALL DESTINATIONS REACHED! :]]]]]]]]]]]]]]]]]]]]] " << std::endl;
                 }
                 break;
             
@@ -1397,24 +1407,13 @@ public:
                 break;
 
             case ButtonID::CLICK_MENU_CREATE_PATH_HANDLE:
-                create_path_handle_at_pos(reference_pos_terrain_local);
+                path_system->create_path_handle_at_pos(reference_pos_terrain_local);
                 click_menu_change_visible(false);
                 break;
         }
         terrain_path_drawer[current_path_draw_mode]->reset(); 
 
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << clicked << std::endl;
-    }
-
-    Interactable* create_path_handle_at_pos (vec3 local_pos) {
-        Interactable *i = interactable_manager->create(
-            vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
-        );
-        float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
-        float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
-        terrain->attach_to_surface(i, uvx, uvy);
-        cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << endl;
-        return i;
     }
 
 private:
@@ -1476,7 +1475,7 @@ private:
         click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_PATH_HANDLE, false) );
         click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_BRIDGE, false) );
         click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_TUNNEL, false) );
-        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DRAG_PATH false) );
+        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DRAG_PATH, false) );
         click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DELETE_PATH, false) );
         click_menu->set_visible(false);
         screen_ui->place( click_menu );
@@ -2554,7 +2553,7 @@ private:
     int hmap_width, hmap_height;
     bool height_data_loaded = false;
 
-    vector<vec3> cached_path;
+    vector<vec2> cached_path;
     CachedPathData cached_path_data;
 
 public:
@@ -2601,10 +2600,10 @@ public:
 
     /* Line drawing algorithm */
     void clear_cache() { cached_path.clear(); }
-    vector<vec3> generate_constant_slope_path(vec3 start, vec2 end, float slope, float step, bool direction = true) {
+    vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float slope, float step, bool direction = true) {
         
         if (!cached_path.empty() && 
-            distance(vec2(start), cached_path_data.start) < 0.001f && 
+            distance(start, cached_path_data.start) < 0.001f && 
             distance(end, cached_path_data.end) < 0.05f && 
             abs(slope - cached_path_data.slope) < 0.001f &&
             abs(step - cached_path_data.step) < 0.001f  &&
@@ -2612,27 +2611,28 @@ public:
             return cached_path;
         }
         
-        cached_path_data = { vec2(start), end, slope, step, 0 };
+        cached_path_data = { start, end, slope, step, 0 };
         cached_path.clear();
         cached_path.push_back(start);
 
         int max_safety_steps = 2000;
-        float min_dist_to_end = length(end - vec2(start));
+        float min_dist_to_end = length(end - start);
         int min_dist_index = 0;
 
         for(int i = 0; i < max_safety_steps; i++) {
             /* get target direction */
-            vec2 end_dir = (end-vec2(cached_path.back()));
+            vec2 end_dir = (end-cached_path.back());
             vec2 end_dir_normalise = end_dir / length(end_dir);
             
             /* add new point */
-            float target_height = cached_path.back().z + step*slope;
-            vec2 next_point = follow_slope_gradient(vec2(cached_path.back()) + end_dir_normalise*step, target_height);
-            cached_path.push_back( vec3(next_point, get_height_at_local_pos(next_point.x,next_point.y)) );
+            vec2 points_uv = local_to_uv(cached_path.back());
+            float target_height = get_height_bilinear(points_uv.x, points_uv.y) + step*slope;
+            vec2 next_point = follow_slope_gradient(cached_path.back() + end_dir_normalise*step, target_height);
+            cached_path.push_back( next_point );
 
             /* calculate final distances */
-            float dist = length(end-vec2(cached_path.back()));
-            float points_dist = length(vec2(cached_path.back())-vec2(cached_path[cached_path.size()-2]));
+            float dist = length(end-cached_path.back());
+            float points_dist = length(cached_path.back()-cached_path[cached_path.size()-2]);
             if (dist < min_dist_to_end) {
                 min_dist_to_end = dist;
                 min_dist_index = cached_path.size()-1;
@@ -2646,7 +2646,7 @@ public:
 
         /* Path smoothing */
         if (cached_path.size() > 2) {
-            vector<vec3> smoothed = cached_path;
+            vector<vec2> smoothed = cached_path;
             for(int i = 1; i < cached_path.size() - 1; i++) {
                 smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
             }
@@ -2656,67 +2656,8 @@ public:
         if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
         return cached_path;
     }
-    vector<vec3> generate_auto_slope_path(vec3 start, vec2 end, float max_slope, float step, bool direction = true) {
-        
-        if (!cached_path.empty() && 
-            distance(vec2(start), cached_path_data.start) < 0.001f && 
-            distance(end, cached_path_data.end) < 0.05f && 
-            abs(max_slope - cached_path_data.slope) < 0.001f &&
-            abs(step - cached_path_data.step) < 0.001f  && 
-            cached_path_data.mode == 1 ) { 
-            return cached_path;
-        }
-        
-        cached_path_data = { vec2(start), end, max_slope, step, 1 };
-        cached_path.clear();
-        cached_path.push_back(start);
-
-        // Calculate automatic slope
-        float end_z = get_height_at_local_pos(end.x, end.y);
-        float total_dist = length(end - vec2(start));
-        float needed_slope = (end_z - start.z) / (total_dist > 0.001f ? total_dist : 1.f);
-        float actual_slope = glm::clamp(needed_slope, -max_slope, max_slope);
-
-        int max_safety_steps = 2000;
-        float min_dist_to_end = length(end - vec2(start));
-        int min_dist_index = 0;
-
-        for(int i = 0; i < max_safety_steps; i++) {
-            /* get target direction */
-            vec2 end_dir = (end-vec2(cached_path.back()));
-            vec2 end_dir_normalise = end_dir / length(end_dir);
-            
-            /* add new point */
-            float target_height = cached_path.back().z + step*actual_slope;
-            vec2 next_point = follow_slope_gradient(vec2(cached_path.back()) + end_dir_normalise*step, target_height);
-            cached_path.push_back( vec3(next_point, get_height_at_local_pos(next_point.x,next_point.y)) );
-
-            /* calculate final distances */
-            float dist = length(end-vec2(cached_path.back()));
-            float points_dist = length(vec2(cached_path.back())-vec2(cached_path[cached_path.size()-2]));
-            if (dist < min_dist_to_end) {
-                min_dist_to_end = dist;
-                min_dist_index = cached_path.size()-1;
-            }
-
-            /* exit conditions */
-            if (points_dist < 0.5*step) break;
-            if (dist > min_dist_to_end + step*20.f) break; // heuristic
-            if (dist < step) break;
-        }
-
-        /* Path smoothing */
-        if (cached_path.size() > 2) {
-            vector<vec3> smoothed = cached_path;
-            for(int i = 1; i < cached_path.size() - 1; i++) {
-                smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
-            }
-            cached_path = smoothed;
-        }
-
-        //points.pop_back(); // last point was further from end than second to last, remove it
-        if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
-        return cached_path;
+    vector<vec2> generate_auto_slope_path(vec2 start, vec2 end, float max_slope, float step, bool direction = true) {
+        return generate_constant_slope_path(start,end,max_slope, step, direction);
     }
 
 private:
@@ -2787,7 +2728,7 @@ private:
             if(offset_len > 0.05f) offset = (offset / offset_len) * 0.05f; // Cap jump size
 
             pos += offset;
-            pos = clamp(pos, vec2(-0.5f), vec2(0.5f));
+            pos = clamp(pos, -0.5f, 0.5f);
         }
         return pos;
     }
@@ -2935,7 +2876,6 @@ public:
 
         // place objects in world
         w->place(terrain_obj);
-        w->place(terrain_floor);
     }
     
     Plane* get_obj() {
@@ -3910,6 +3850,11 @@ public:
         camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
         for (const auto& object_ptr : objects) {
+            if (object_ptr->new_child_added) {
+                place(object_ptr); // will recursively place all children, skip already added
+                object_ptr->new_child_added = false;
+            }
+
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
             object_ptr->update_transform();
@@ -4003,45 +3948,13 @@ public:
         : Button(button_id, button_toggle, position, 0.f, Colour::TRANSPARENT) {
     
         text_obj = new UIText(text_str, font_scale, text_colour);
-        text_obj->set_parent(this);
-        text_obj->set_screenspace();
-
+        text_obj->set_ui_parent(this);
+        
         resize_and_reposition();
-    }
-    
-    void construct() override {
-        Button::construct();
-        text_obj->construct();
-    }
 
-    void set_shader(Shader *s) override {
-        Button::set_shader(s);
-        text_obj->set_shader(s);
-        text_obj->initialize_shader_properties();
-        if (has_background) bg_panel->set_shader(s);
-    }
-    
-    void render() override {
-        if (!visible) return;
-
-        if (has_background) {
-            bg_panel->calculate_transform_matrix();   
-            bg_panel->enable_shader();
-            bg_panel->update_transform();
-            bg_panel->configure_render_properties();        
-            bg_panel->render(); 
-            bg_panel->disable_render_properties();
-        }
-        
-        text_obj->calculate_transform_matrix();   
-        text_obj->enable_shader();
-        text_obj->update_transform();
-        text_obj->configure_render_properties();        
-        text_obj->render(); 
-        text_obj->disable_render_properties();
-        
-        enable_shader();
-        Button::render();
+        bg_panel = new Panel(Colour::TRANSPARENT, vec2(0), size);
+        bg_panel->set_ui_parent(this);
+        bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
     }
     
     void set_text(std::string text_str) { 
@@ -4055,10 +3968,8 @@ public:
 
         text_obj->set_anchor(UIAnchor::CENTER, vec2(0));        
 
-        if (has_background) {
-            bg_panel->set_size(size);
-            bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
-        }
+        bg_panel->set_size(size);
+        bg_panel->recalculate_ui_position();
     }
     
     void set_clicked_state(bool clicked) override {
@@ -4073,16 +3984,8 @@ public:
     }
     
     void set_background(vec4 colour) {
-        if (!has_background){
-            bg_panel = new Panel(colour, vec2(0), size);
-            bg_panel->set_parent(this);
-            bg_panel->set_screenspace();
-            bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
-            bg_panel->construct();
-            if(this->shader) bg_panel->set_shader(this->shader);
-            has_background = true;
-        } 
-        else bg_panel->set_colour(colour);
+        bg_panel->set_colour(colour);
+        has_background = true;
     }
 };
 
@@ -4120,36 +4023,10 @@ public:
             scale_to_text(scale_to_text), center_text(center)         
     {
         text_obj = new UIText(text_str, font_scale, text_colour);
-        text_obj->set_parent(this);
+        text_obj->set_ui_parent(this);
         text_obj->set_screenspace();
 
         resize_and_reposition();
-    }
-    
-    void construct() override {
-        Panel::construct();
-        text_obj->construct();
-    }
-
-    void set_shader(Shader *s) override {
-        Panel::set_shader(s);
-        text_obj->set_shader(s);
-        text_obj->initialize_shader_properties();
-    }
-    
-    void render() override {
-        if (!visible) return;
-
-        Panel::render();
-
-        text_obj->calculate_transform_matrix();   
-        text_obj->enable_shader();
-        text_obj->update_transform();
-        text_obj->configure_render_properties();        
-        text_obj->render(); 
-        text_obj->disable_render_properties();
-
-        enable_shader();
     }
     
     void set_text(std::string text_str) { 
@@ -4310,7 +4187,7 @@ public:
         
         if (has_background) {
             background_panel = new Panel(bg_col, vec2(0.f), vec2(0.f));
-            background_panel->set_parent(this);
+            background_panel->set_ui_parent(this);
             background_panel->set_screenspace();
             background_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
         }
@@ -4319,7 +4196,7 @@ public:
     void add_item(UIObject* item) {
         if (!item) return;
 
-        item->set_parent(this);
+        item->set_ui_parent(this);
         item->set_screenspace();
         
         if (this->shader) {
@@ -4469,7 +4346,7 @@ public:
         return ui_children;
     }
     void add_ui_child(UIObject* child) {
-        ui_children.push_back(child);
+        ui_children.push_back(child); new_child_added = true;
     }
 
     virtual void configure_render_properties() override { 
@@ -5376,6 +5253,87 @@ public:
 #endif 
 
 ======================================================================
+*** FILE: world_objects\Line2D.h ***
+======================================================================
+
+#ifndef LINE2D_H
+#define LINE2D_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Line2D : public Object
+{
+private:
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    std::vector<vec2> points;
+    float line_thickness = 5.f;
+
+public:
+    Line2D(std::vector<vec2> points, float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
+    { render_to_world_pos = false; points.clear(); }
+    
+    Line2D(float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
+    { render_to_world_pos = false; points.clear(); }
+
+    void construct() override {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    void render() override {
+        if (points.size() < 2) return;
+       
+        //glDisable(GL_DEPTH_TEST);
+
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec2), points.data(), GL_DYNAMIC_DRAW);
+
+        glLineWidth(line_thickness);
+        
+        glDrawArrays(GL_LINE_STRIP, 0, points.size());
+       
+        glBindVertexArray(0);
+        //glEnable(GL_DEPTH_TEST);
+    }
+
+    void add_point(vec2 p) { points.push_back(p); }
+    void add_points(std::vector<vec2> new_points) { for (auto p : new_points) points.push_back(p); }
+    void set_points(std::vector<vec2> new_points) { this->points = new_points; }
+    void clear_points() { points.clear(); }
+    int get_point_num() { return points.size(); }
+    std::vector<vec2> get_points() { return points; }
+    vec2 get_last_point() { return points.back(); }
+
+    ~Line2D() override {
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+    }
+};
+
+#endif 
+
+======================================================================
 *** FILE: world_objects\Object.h ***
 ======================================================================
 
@@ -5385,6 +5343,7 @@ public:
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <vector>
 #include "settings/Utility.h"
 #include "textures/Texture.h"
 #include "shaders/ShaderManager.h"
@@ -5395,33 +5354,22 @@ using namespace glm;
 class Object
 {
 public:
-    vec3 position;
-    vec3 size;
-    vec3 rotation = vec3(0.f);
-    bool visible = true;
-    Shader *shader = new DEFAULT_WORLD_SHADER;
-
-    bool custom_shader = false;
-
+    vec3 position, size, rotation = vec3(0.f);
+    
+    bool custom_shader = false, visible = true, uses_texture = false, has_parent = false;
+    bool render_to_world_pos = true, is_screen_object = false, render_props_changed = true;
+    bool new_child_added = false;
+    
+    mat4 global_transform_matrix, local_transform_matrix;
     vec4 colour = Colour::PINK, tint_colour = Colour::WHITE;
     float opacity = 1.f;
-    bool uses_texture = false;
-
-    bool has_parent = false;
+    
+    Shader *shader = new DEFAULT_WORLD_SHADER;
     Object *parent;
-
-    bool render_to_world_pos = true;
-
-    mat4 global_transform_matrix, local_transform_matrix;
-
-    bool is_screen_object = false;
-    bool render_props_changed = true;
-
+    std::vector<Object*> children;
+    
+    Object(vec3 pos = vec3(0.0f), vec3 size = vec3(1.0f)) : position(pos), size(size) {}
     virtual ~Object() = default;
-
-    Object(vec3 pos = vec3(0.0f), vec3 size = vec3(1.0f))
-        : position(pos), size(size) {
-    }
         
     // necessary functions
     virtual void render() = 0;
@@ -5447,7 +5395,7 @@ public:
     // scaling
     void scale(vec3 s){ this->size *= s; }
     void scale(float s){ this->size *= vec3(s,s,s); }
-    void set_size(vec3 s){    this->size = s; }
+    void set_size(vec3 s){ this->size = s; }
     void set_size(float s){ this->size = vec3(s,s,s); }
 
     // transform calculations
@@ -5472,7 +5420,9 @@ public:
     // basic fucntions
     mat4 get_transform() {    return global_transform_matrix; }
     virtual void set_visible(bool is_visible) { visible = is_visible; }
-    virtual void set_parent(Object *parent) { has_parent = true; this->parent = parent; }
+    virtual void set_parent(Object *parent) { if (!parent) { return; } has_parent = true; this->parent = parent; parent->add_child(this); }
+    void add_child(Object *child) { children.push_back(child); new_child_added = true; }
+    std::vector<Object*> get_children() { return children; }
     void set_transparency (float alpha) { opacity = glm::clamp(alpha, 0.f, 1.f); render_props_changed = true;  }
     void set_colour (vec3 new_colour) { colour = vec4(new_colour, 1.f); render_props_changed = true;  }
     void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; render_props_changed = true;  } }
@@ -5795,6 +5745,10 @@ public:
             if (world_pos_pass && !object_ptr->render_to_world_pos) {
                 continue;
             }
+            if (object_ptr->new_child_added) {
+                place(object_ptr); // will recursively place all children, skip already added
+                object_ptr->new_child_added = false;
+            }
          
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
@@ -5806,10 +5760,20 @@ public:
     }
     
     void place(Object* obj) {
+        if (!obj) {
+            std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
+            return;
+        }
+        for (auto o : objects) if (o == obj) return;
+        
         this->objects.push_back(obj);
         obj->construct();
         obj->initialize_shader_properties();
         camera->set_orthographic(obj->shader);
+
+        // detect and place children of obj
+        std::vector<Object*> obj_children = obj->get_children();
+        for (auto c : obj_children) place(c);
     }
 
     void clear_objects() {

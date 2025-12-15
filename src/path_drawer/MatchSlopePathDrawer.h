@@ -26,8 +26,8 @@ public:
     float last_scroll_value = 1.f;
     bool modify_scroll_on_next_update = false;
 
-    MatchSlopePathDrawer (Terrain *terrain, World *w, float max_slope = 1.f, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,w,0.f,debug_msg), max_slope(max_slope) { }   
+    MatchSlopePathDrawer (Terrain *terrain, float max_slope = 1.f, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,0.f,debug_msg), max_slope(max_slope) { }   
 
     void update_path (InputHandler *input_handler) override {
         /* modify slope */

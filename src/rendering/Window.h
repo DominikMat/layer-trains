@@ -28,7 +28,6 @@
 #include "TitleCardScene.h"
 #include "ScreenUI.h"
 #include "settings/ColourData.h"
-#include "TerrainPath.h"
 #include "Scene.h"
 #include "TerrainScene.h"
 #include <string>

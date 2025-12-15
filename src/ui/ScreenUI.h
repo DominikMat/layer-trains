@@ -29,7 +29,14 @@ public:
         camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
         camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
-        for (const auto& object_ptr : objects) {
+        int object_count_on_loop_start = objects.size();
+        for (int i=0; i<object_count_on_loop_start; i++) {
+            auto object_ptr = objects[i];
+
+            if (object_ptr->new_child_added) {
+                place(object_ptr); // will recursively place all children, skip already added
+            }
+
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
             object_ptr->update_transform();
@@ -46,18 +53,23 @@ public:
             std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
             return;
         }
-        for (auto o : objects) if (o == obj) {
-            std::cout << "OBJECT ALREDY ADDED TO SCREEN UI!" << std::endl;
-            return;
+        bool exists = false;
+        for (auto o : objects) {
+            if (o == obj) { 
+                exists = true; 
+                break; 
+            }
         }
-
-        this->objects.push_back(obj);
-        obj->construct();
-        Shader *new_ui_shader = new SCREEN_UI_SHADER;
-        camera->set_screenspace(new_ui_shader);
-        obj->set_shader(new_ui_shader);
-        obj->set_screenspace();
-        obj->initialize_shader_properties();
+        
+        if (!exists) {
+            this->objects.push_back(obj);
+            obj->construct();
+            Shader *new_ui_shader = new SCREEN_UI_SHADER;
+            camera->set_screenspace(new_ui_shader);
+            obj->set_shader(new_ui_shader);
+            obj->set_screenspace();
+            obj->initialize_shader_properties();
+        }
 
         // detect and add buttons to seperate array
         Button* obj_button = obj->get_button();
@@ -66,6 +78,7 @@ public:
         // detect and place buttons to seperate array
         vector<UIObject*> obj_children = obj->get_ui_children();
         for (auto c : obj_children) place(c);
+        obj->new_child_added = false;
     }
 
     void check_button_clicked(InputHandler *ih) {

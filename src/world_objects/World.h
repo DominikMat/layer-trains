@@ -22,11 +22,17 @@ public:
     World (Camera *camera) : camera(camera) { }
     
     void render(bool world_pos_pass = false) {
-        for (const auto& object_ptr : objects) {
+        int object_count_on_loop_start = objects.size();
+        for (int i=0; i<object_count_on_loop_start; i++) {
+            auto object_ptr = objects[i];
+            
             if (world_pos_pass && !object_ptr->render_to_world_pos) {
                 continue;
             }
-         
+            if (object_ptr->new_child_added) {
+                place(object_ptr); // will recursively place all children, skip already added
+            }
+            
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
             object_ptr->update_transform();
@@ -37,10 +43,29 @@ public:
     }
     
     void place(Object* obj) {
-        this->objects.push_back(obj);
-        obj->construct();
-        obj->initialize_shader_properties();
-        camera->set_orthographic(obj->shader);
+        if (!obj) {
+            std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
+            return;
+        }
+        bool exists = false;
+        for (auto o : objects) {
+            if (o == obj) { 
+                exists = true; 
+                break; 
+            }
+        }
+        
+        if (!exists) {
+            this->objects.push_back(obj);
+            obj->construct();
+            obj->initialize_shader_properties();
+            camera->set_orthographic(obj->shader);
+        }
+
+        // detect and place children of obj
+        std::vector<Object*> obj_children = obj->get_children();
+        for (auto c : obj_children) place(c);
+        obj->new_child_added = false;
     }
 
     void clear_objects() {

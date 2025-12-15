@@ -108,7 +108,6 @@ public:
 
         // place objects in world
         w->place(terrain_obj);
-        w->place(terrain_floor);
     }
     
     Plane* get_obj() {

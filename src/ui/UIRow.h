@@ -33,17 +33,8 @@ public:
 
     void add_item(UIObject* item) {
         if (!item) return;
-
         item->set_ui_parent(this);
-        item->set_screenspace();
-        
         items.push_back(item);
-
-        if (this->shader) {
-            item->construct();
-            item->set_shader(this->shader);
-        }
-
         recalculate_layout();
     }
 
@@ -79,6 +70,10 @@ public:
 
     void construct() override {} // nothing, only children construct
     void render() override {} // nothing only children render
+
+    void resize_and_reposition() override {
+        recalculate_layout();
+    }
 };
 
 #endif

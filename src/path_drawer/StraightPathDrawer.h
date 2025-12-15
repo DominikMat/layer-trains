@@ -19,8 +19,8 @@ using namespace std;
 class StraightPathDrawer : public TerrainPathDrawer
 {
 public:
-    StraightPathDrawer (Terrain *terrain, World *w, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,w,0.f,debug_msg) { }   
+    StraightPathDrawer (Terrain *terrain, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,0.f,debug_msg) { }   
 
     void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) override {
         float path_dist = glm::length(end-start);

@@ -25,45 +25,13 @@ public:
         : Button(button_id, button_toggle, position, 0.f, Colour::TRANSPARENT) {
     
         text_obj = new UIText(text_str, font_scale, text_colour);
-        text_obj->set_parent(this);
-        text_obj->set_screenspace();
+        text_obj->set_ui_parent(this);
+        
+        bg_panel = new Panel(Colour::TRANSPARENT, vec2(0), size);
+        bg_panel->set_ui_parent(this);
+        bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
 
         resize_and_reposition();
-    }
-    
-    void construct() override {
-        Button::construct();
-        text_obj->construct();
-    }
-
-    void set_shader(Shader *s) override {
-        Button::set_shader(s);
-        text_obj->set_shader(s);
-        text_obj->initialize_shader_properties();
-        if (has_background) bg_panel->set_shader(s);
-    }
-    
-    void render() override {
-        if (!visible) return;
-
-        if (has_background) {
-            bg_panel->calculate_transform_matrix();   
-            bg_panel->enable_shader();
-            bg_panel->update_transform();
-            bg_panel->configure_render_properties();        
-            bg_panel->render(); 
-            bg_panel->disable_render_properties();
-        }
-        
-        text_obj->calculate_transform_matrix();   
-        text_obj->enable_shader();
-        text_obj->update_transform();
-        text_obj->configure_render_properties();        
-        text_obj->render(); 
-        text_obj->disable_render_properties();
-        
-        enable_shader();
-        Button::render();
     }
     
     void set_text(std::string text_str) { 
@@ -77,10 +45,8 @@ public:
 
         text_obj->set_anchor(UIAnchor::CENTER, vec2(0));        
 
-        if (has_background) {
-            bg_panel->set_size(size);
-            bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
-        }
+        bg_panel->set_size(size);
+        bg_panel->recalculate_ui_position();
     }
     
     void set_clicked_state(bool clicked) override {
@@ -95,16 +61,8 @@ public:
     }
     
     void set_background(vec4 colour) {
-        if (!has_background){
-            bg_panel = new Panel(colour, vec2(0), size);
-            bg_panel->set_parent(this);
-            bg_panel->set_screenspace();
-            bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
-            bg_panel->construct();
-            if(this->shader) bg_panel->set_shader(this->shader);
-            has_background = true;
-        } 
-        else bg_panel->set_colour(colour);
+        bg_panel->set_colour(colour);
+        has_background = true;
     }
 };
 

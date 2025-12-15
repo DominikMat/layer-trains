@@ -25,36 +25,10 @@ public:
             scale_to_text(scale_to_text), center_text(center)         
     {
         text_obj = new UIText(text_str, font_scale, text_colour);
-        text_obj->set_parent(this);
+        text_obj->set_ui_parent(this);
         text_obj->set_screenspace();
 
         resize_and_reposition();
-    }
-    
-    void construct() override {
-        Panel::construct();
-        text_obj->construct();
-    }
-
-    void set_shader(Shader *s) override {
-        Panel::set_shader(s);
-        text_obj->set_shader(s);
-        text_obj->initialize_shader_properties();
-    }
-    
-    void render() override {
-        if (!visible) return;
-
-        Panel::render();
-
-        text_obj->calculate_transform_matrix();   
-        text_obj->enable_shader();
-        text_obj->update_transform();
-        text_obj->configure_render_properties();        
-        text_obj->render(); 
-        text_obj->disable_render_properties();
-
-        enable_shader();
     }
     
     void set_text(std::string text_str) { 

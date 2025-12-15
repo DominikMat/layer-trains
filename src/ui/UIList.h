@@ -25,7 +25,7 @@ public:
         
         if (has_background) {
             background_panel = new Panel(bg_col, vec2(0.f), vec2(0.f));
-            background_panel->set_parent(this);
+            background_panel->set_ui_parent(this);
             background_panel->set_screenspace();
             background_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
         }
@@ -33,15 +33,8 @@ public:
 
     void add_item(UIObject* item) {
         if (!item) return;
-
-        item->set_parent(this);
-        item->set_screenspace();
-        
-        if (this->shader) {
-            item->construct();
-            item->set_shader(this->shader);
-        }
-
+        item->set_ui_parent(this);
+        items.push_back(item);
         recalculate_layout();
     }
 
@@ -77,6 +70,10 @@ public:
 
     void construct() override {} // nothing, only children construct
     void render() override {} // nothing only children render
+
+    void resize_and_reposition() override {
+        recalculate_layout();
+    }
 };
 
 #endif

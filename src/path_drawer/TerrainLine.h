@@ -14,6 +14,7 @@ private:
     const TerrainData *td;
 public:
     TerrainLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
+    TerrainLine(const TerrainData *td, vector<vec2> points) : Line2D(points, PATH_THICKNESS), td(td) {}
     
     void initialize_shader_properties() override {
         Shader *shader = new TERRAIN_LINE_SHADER;

@@ -7,7 +7,7 @@
 #include <vector>
 #include "Terrain.h"
 #include "InputHandler.h"
-#include "TerrainLine.h"
+#include "PathSystem.h"
 
 using namespace glm;
 using namespace std;
@@ -19,25 +19,16 @@ public:
     bool drawing_path = false, debug_msg = false;
     float slope = 0.f;
 
+    int start_draw_handle;
+
     Terrain *terrain;
-
     TerrainLine *current_line;
-    TerrainLine *set_line;
 
-    TerrainPathDrawer (Terrain *terrain, World *w, float slope, bool debug_msg = false) 
+    TerrainPathDrawer (Terrain *terrain, float slope, bool debug_msg = false) 
         : terrain(terrain), debug_msg(debug_msg), slope(slope) {
         
         current_line = new TerrainLine(terrain->terrain_data);
-        //current_line->set_colour( PATH_COLOUR );
         current_line->set_parent(terrain->terrain_obj);
-        //current_line->move(CONTOUR_LINE_HEGHT_OFFSET);
-        w->place(current_line);
-
-        set_line = new TerrainLine(terrain->terrain_data);
-        //set_line->set_colour( PATH_COLOUR );
-        set_line->set_parent(terrain->terrain_obj);
-        //set_line->move(CONTOUR_LINE_HEGHT_OFFSET);
-        w->place(set_line);
     }   
 
     virtual void update_path (InputHandler *input_handler) {
@@ -54,8 +45,9 @@ public:
 
     }
     
-    virtual void start_drawing_at_pos (vec3 local_pos) {
+    virtual void start_drawing_at_pos (vec3 local_pos, int handle_id) {
         if (abs(local_pos.x) <= 0.5f && abs(local_pos.y) <= 0.5f) {
+            start_draw_handle = handle_id;
             drawing_path = true;
             origin_point = local_pos;            
             if (debug_msg) std::cout << "Path started." << std::endl;
@@ -63,14 +55,17 @@ public:
         
     }
     
-    virtual void end_drawing_at_pos (vec3 local_pos) {
+    virtual TerrainLinkData end_drawing_at_pos (vec3 local_pos, int handle_id) {
         drawing_path = false;
         recalculate_path(current_line, origin_point, local_pos, slope);
 
         if (debug_msg) std::cout << (current_line->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
 
-        set_line->add_points ( current_line->get_points() );
+        TerrainLinkData new_link = {
+            start_draw_handle, handle_id, current_line->get_points()
+        };
         current_line->clear_points();
+        return new_link;
     }
 
     virtual void recalculate_path(Line2D* line, vec2 start, vec2 end, float slope_value=0.f) = 0;
@@ -81,7 +76,6 @@ public:
     }
     void clear_path() {
         current_line->clear_points();
-        set_line->clear_points();
     }
     
     bool is_drawing_path() {
