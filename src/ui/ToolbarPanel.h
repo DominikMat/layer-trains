@@ -28,24 +28,24 @@ private:
     std::vector<Button*> buttons;
 
 public:
-    ToolbarPanel(vec2 pos, float button_size, float gap, vec4 background_col, vec4 button_col)
+    ToolbarPanel(float gap, vec4 background_col, float button_size , vec2 pos = vec2(0))
         : UIObject(pos, vec2(0, button_size + 2 * gap)), 
           button_size(button_size), gap_size(gap), 
-          bg_color(background_col), btn_color(button_col) 
+          bg_color(background_col)
     {
         // 1. Create Background Rectangle
         panel_height = button_size * 1.2f;
         backgroundRect = new Panel(bg_color, vec2(0,0), vec2(0, panel_height));
-        backgroundRect->set_parent(this); 
+        backgroundRect->set_ui_parent(this); 
         backgroundRect->set_anchor(UIAnchor::CENTER, vec2(0.f));
 
         // 2. Create End Caps
         leftCap = new Circle(vec2(0,0), panel_height, bg_color);
-        leftCap->set_parent(this);
+        leftCap->set_ui_parent(this);
         leftCap->set_anchor(UIAnchor::MIDDLE_LEFT, vec2(0.f));
         
         rightCap = new Circle(vec2(0,0), panel_height, bg_color);
-        rightCap->set_parent(this);
+        rightCap->set_ui_parent(this);
         rightCap->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(0.f));
     }
 
@@ -53,7 +53,6 @@ public:
         Button* btn = new Button(id, toggle, vec2(0), button_size, icon);
         setup_new_button(btn);
     }
-    
     void add_button(int id, bool toggle, vec4 specific_color) {
         Button* btn = new Button(id, toggle, vec2(0), button_size, specific_color);
         setup_new_button(btn);
@@ -61,7 +60,7 @@ public:
 
     // Helper to position and store button
     void setup_new_button(Button* btn) {
-        btn->set_parent(this);
+        btn->set_ui_parent(this);
         btn->set_screenspace(); 
         buttons.push_back(btn);
         
@@ -93,62 +92,13 @@ public:
         backgroundRect->recalculate_ui_position();
     }
 
-    // --- Override Core Object Functions ---
-    void construct() override {
-        backgroundRect->construct();
-        leftCap->construct();
-        rightCap->construct();
-    }
+    void construct() override {} // do nothing , only children have structure
+    void render() override {} // do nothing , only children render
 
-    void set_shader(Shader* s) override {
-        Object::set_shader(s);
-        backgroundRect->set_shader(s);
-        leftCap->set_shader(s);
-        rightCap->set_shader(s);
-        for(auto b : buttons) b->set_shader(s);
-    }
-
-    void calculate_transform_matrix() override {
-        Object::calculate_transform_matrix(); 
-        backgroundRect->calculate_transform_matrix();
-        leftCap->calculate_transform_matrix();
-        rightCap->calculate_transform_matrix();
-        for (auto btn : buttons) btn->calculate_transform_matrix();
-    }
-
-    void render() override {
-        if (!visible) return;
-
-        // 1. Background
-        backgroundRect->update_transform(); // Uploads BG matrix
-        backgroundRect->configure_render_properties(); // Uploads BG colour
-        backgroundRect->render();
-
-        // 2. Caps
-        leftCap->update_transform();
-        leftCap->configure_render_properties();
-        leftCap->render();
-
-        rightCap->update_transform();
-        rightCap->configure_render_properties();
-        rightCap->render();
-
-        // 3. Buttons
-        for (auto btn : buttons) {
-            btn->update_transform();
-            btn->configure_render_properties();
-            btn->render();
-        }
-    } 
-
-    std::vector<Button*> get_buttons() override { return buttons; }
-
-    ~ToolbarPanel() override {
-        delete backgroundRect;
-        delete leftCap;
-        delete rightCap;
-        for (auto b : buttons) delete b;
-    }
+    // void resize_and_reposition() override {
+    //     UIObject::recalculate_ui_position();
+    //     recalculate_layout();
+    // }
 };
 
 #endif

@@ -1,17 +1,14 @@
 #ifndef ScreenUI_H
 #define ScreenUI_H
 
-#include "Shader.h"
-#include "Object.h"
-#include "ToolbarPanel.h"
 #include "Camera.h"
+#include "UIObject.h"
+#include "Button.h"
 #include "InputHandler.h"
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
 #include <stdexcept>
-
-class Camera;
 
 using namespace glm;
 using ButtonCallback = std::function<void(int button_id, bool clicked)>;
@@ -20,21 +17,17 @@ class ScreenUI {
 public:
     std::vector<UIObject*> objects;
     std::vector<Button*> buttons;
-    Shader shader;
-    Camera camera;
+    Camera *camera;
     ButtonCallback button_callback;
 
-    ScreenUI () : shader(SCREEN_UI_SHADER), camera(Camera(SCR_WIDTH, SCR_HEIGHT, 0.f, 0.f, 0.f, 1.f)) { 
-        camera.set_screenspace(&shader); // always ortho projection for 2D 
-    }
+    ScreenUI () : camera(new Camera(SCR_WIDTH, SCR_HEIGHT, 0.f, 0.f, 0.f, 1.f)) {}
 
     void render(float scr_width, float scr_height) {
         
         glDisable(GL_DEPTH_TEST);
 
-        camera.set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
-        camera.set_orthographic_zoom(scr_height); // cast to pixel coordinates 
-        shader.use();
+        camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
+        camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
         for (const auto& object_ptr : objects) {
             object_ptr->calculate_transform_matrix();   
@@ -49,15 +42,30 @@ public:
     }
 
     void place(UIObject* obj) {
+        if (!obj) {
+            std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
+            return;
+        }
+        for (auto o : objects) if (o == obj) {
+            std::cout << "OBJECT ALREDY ADDED TO SCREEN UI!" << std::endl;
+            return;
+        }
+
         this->objects.push_back(obj);
         obj->construct();
-        obj->set_shader(&shader);
+        Shader *new_ui_shader = new SCREEN_UI_SHADER;
+        camera->set_screenspace(new_ui_shader);
+        obj->set_shader(new_ui_shader);
         obj->set_screenspace();
         obj->initialize_shader_properties();
 
         // detect and add buttons to seperate array
-        vector<Button*> obj_buttons = obj->get_buttons();
-        for (auto b : obj_buttons) buttons.push_back(b);
+        Button* obj_button = obj->get_button();
+        if(obj_button) buttons.push_back(obj_button);
+
+        // detect and place buttons to seperate array
+        vector<UIObject*> obj_children = obj->get_ui_children();
+        for (auto c : obj_children) place(c);
     }
 
     void check_button_clicked(InputHandler *ih) {

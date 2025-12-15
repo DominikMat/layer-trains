@@ -20,8 +20,9 @@ protected:
 public:
     Button(int button_id, bool toggle, vec2 pos, float size_px, Texture *texture)
         : UIObject(pos, vec2(size_px)), id(button_id), toggle(toggle) {
-        this->set_texture(texture);
-        //this->colour = vec4(1.0f); // Default white tint for texture
+            this->set_texture(texture);
+            //this->set_colour(Colour::); // Default white tint for texture
+
     }
 
     // Constructor for solid color button (no texture)
@@ -90,17 +91,13 @@ public:
     void render() override {
         if (!visible) return;
         
-        // Optional: Apply dynamic click scale here if not handling in update
-        // (Requires resetting shader matrix)
-        
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
     }
 
-    std::vector<Button*> get_buttons() override { 
-        std::vector<Button*> return_btns = { this };
-        return return_btns; 
+    Button* get_button() override { 
+        return this; 
     }
 
     ~Button() override {

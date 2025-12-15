@@ -1,42 +1,44 @@
-#ifndef UILIST_H
-#define UILIST_H
+#ifndef UIRow_H
+#define UIRow_H
 
 #include <vector>
 #include <algorithm>
 #include "UIObject.h"
 #include "Panel.h"
+#include "Button.h"
 
-class Button;
-
-class UIList : public UIObject {
+class UIRow : public UIObject {
 private:
-    float gap_size, padding;    
+    float gap_size, padding;
     vector<UIObject*> items;
     bool has_background = false;
     Panel* background_panel = nullptr;
 
 public:
-    UIList(float gap, vec4 bg_col, float padding_px, vec2 pos = vec2(0.f))
+    UIRow(float gap, vec4 bg_col, float padding_px, vec2 pos = vec2(0.f))
         : UIObject(pos, vec2(10.f, 10.f)), // Rozmiar początkowy, zaktualizuje się sam
           gap_size(gap), padding(padding_px)
     {
         this->set_anchor(UIAnchor::CENTER, vec2(0.f)); // Domyślna kotwica
         has_background = bg_col.a > 0.0f;
-        
+
         if (has_background) {
             background_panel = new Panel(bg_col, vec2(0.f), vec2(0.f));
-            background_panel->set_parent(this);
+            background_panel->set_ui_parent(this);
             background_panel->set_screenspace();
             background_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
         }
+
     }
 
     void add_item(UIObject* item) {
         if (!item) return;
 
-        item->set_parent(this);
+        item->set_ui_parent(this);
         item->set_screenspace();
         
+        items.push_back(item);
+
         if (this->shader) {
             item->construct();
             item->set_shader(this->shader);
@@ -51,16 +53,16 @@ public:
             return;
         }
 
-        float total_height = 0.f;
-        float max_width = 0.f;
+        float max_height = 0.f;
+        float total_width = 0.f;
 
         for (auto* item : items) {
-            total_height += item->size.y;
-            if (item->size.x > max_width) max_width = item->size.x;
+            total_width += item->size.x;
+            if (item->size.y > max_height) max_height = item->size.y;
         }
 
-        total_height += (items.size() - 1) * gap_size;
-        set_size(vec3(max_width+padding*2.f, total_height+padding*2.f, 1.f));
+        total_width += (items.size() - 1) * gap_size;
+        set_size(vec3(total_width+padding*2.f, max_height+padding*2.f, 1.f));
         this->recalculate_ui_position(); 
 
         if (has_background) {
@@ -68,10 +70,10 @@ public:
             background_panel->recalculate_ui_position();
         }
 
-        float current_y = padding;
+        float current_x = padding;
         for (auto* item : items) {
-            item->set_anchor(UIAnchor::TOP_LEFT, vec2(padding, -current_y));
-            current_y += (item->size.y + gap_size);
+            item->set_anchor(UIAnchor::MIDDLE_LEFT, vec2(current_x, 0));
+            current_x += (item->size.x + gap_size);
         }
     }
 

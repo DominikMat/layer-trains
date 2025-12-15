@@ -3,6 +3,7 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <string>
 #include <glm/glm.hpp>
 #include "Scene.h"
 #include "MatchSlopePathDrawer.h"
@@ -12,6 +13,7 @@
 #include "StraightPathDrawer.h"
 #include "ToolbarPanel.h"
 #include "TextPanel.h"
+#include "UIRow.h"
 
 #define curr_path_drawer terrain_path_drawer[current_path_draw_mode]
 
@@ -21,7 +23,8 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        CLICK_MENU_CREATE_PATH_HANDLE = 11, 
+        CLICK_MENU_CREATE_PATH_HANDLE = 10, 
+        TOOL_BRIDGE=20,TOOL_TUNNEL=21,TOOL_RAIL=22,TOOL_ROAD=23
     };
     
     InteractableManager *interactable_manager;
@@ -40,6 +43,7 @@ private:
     Interactable *test_interact;
 
     UIList *click_menu;
+    UIRow *toolbar_row;
     vec3 reference_pos_terrain_local;
 
 public:
@@ -69,7 +73,6 @@ public:
         interactable_manager->add(test_interact);
         
         // --- Path drawer ---
-        //terrain_path_drawer = new MatchSlopePath(terrain, world, 15.f, true);
         terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, world, true);
         terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, world, 1.f, true);
         terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, world, 0.25f, true);
@@ -216,13 +219,28 @@ private:
         slope_display->set_anchor( UIAnchor::BOTTOM_LEFT, vec2(30,30) );
         screen_ui->place( slope_display );
 
-        /* toolbar panel */
-        ToolbarPanel* toolbar = new ToolbarPanel(vec2(400, 100), 50.0f, 10.0f, vec4(0.2f, 0.2f, 0.2f, 1.0f), Colour::WHITE);        
-        toolbar->set_anchor(UIAnchor::BOTTOM_CENTER, vec2(0,30));
-        toolbar->add_button(ButtonID::MODE_STRAIGHT_PATH, false, Colour::PINK);
-        toolbar->add_button(ButtonID::MODE_AUTO_SLOPE, false, Colour::PURPLE);
-        toolbar->add_button(ButtonID::MODE_ISO_PATH, false, Colour::SKY_BLUE);
-        screen_ui->place(toolbar);
+        /* toolbar row */
+        toolbar_row = new UIRow(30, Colour::TRANSPARENT, 0);
+        toolbar_row->set_anchor(UIAnchor::BOTTOM_CENTER, vec2(0,30));
+        
+        const float button_size = 35.f, button_gap = 5.f;
+        const vec4 toolbar_bg = Colour::DARK_GREY;
+        std::string icon_filepath = TEXTURE_ICON_FILE_PATH;
+
+        ToolbarPanel* toolbar_left = new ToolbarPanel(button_gap, toolbar_bg, button_size); 
+        toolbar_left->add_button(ButtonID::TOOL_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
+        toolbar_left->add_button(ButtonID::TOOL_TUNNEL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/tunnel_tool.png").c_str()));
+        toolbar_row->add_item(toolbar_left);
+        ToolbarPanel* path_toolbar = new ToolbarPanel(button_gap, toolbar_bg, button_size);
+        path_toolbar->add_button(ButtonID::MODE_STRAIGHT_PATH, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/straight_tool.png").c_str()));
+        path_toolbar->add_button(ButtonID::MODE_AUTO_SLOPE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/auto_slope_tool.png").c_str()));
+        path_toolbar->add_button(ButtonID::MODE_ISO_PATH, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/match_slope_tool.png").c_str()));
+        toolbar_row->add_item(path_toolbar);
+        ToolbarPanel* toolbar_right = new ToolbarPanel(button_gap, toolbar_bg, button_size);
+        toolbar_right->add_button(ButtonID::TOOL_ROAD, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/road_tool.png").c_str()));
+        toolbar_right->add_button(ButtonID::TOOL_RAIL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/rail_tool.png").c_str()));
+        toolbar_row->add_item(toolbar_right);
+        screen_ui->place(toolbar_row);
 
         /* click menu */
         click_menu = new UIList(0, Colour::DARK_GREY, 5);

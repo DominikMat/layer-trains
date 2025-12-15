@@ -1,0 +1,249 @@
+This is an ambitious and cool system! You are moving from a simple "Connect the Dots" system to a full Vector Drawing application mapped onto 3D terrain.
+
+Here is a breakdown of the immediate fixes, the structural changes needed for your new features, and the efficient click detection algorithm.
+1. Immediate Fix: The "Crash" Bug & Graph Integrity
+
+The Issue: In TerrainScene::loop, when you click in empty space to end a path, you create a visual handle (create_path_handle_at_pos) and a visual line, but you never update the PathSystem graph data. The graph doesn't know this new node exists or that it connects to the previous one.
+
+The Fix: You need to capture the ID of the new handle and register the link immediately.
+
+Modify TerrainScene::loop:
+C++
+
+// Inside TerrainScene::loop
+if (user_input->is_left_mouse_clicked() && curr_path_drawer->is_drawing_path() 
+    && glm::length(mouse_terrain_local_pos - curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
+    
+    // 1. Calculate end position
+    vec3 end_pos = mouse_terrain_local_pos; 
+    
+    // 2. Create the visual handle
+    // Modify create_path_handle_at_pos to RETURN the Interactable* so we can get its ID
+    Interactable* new_handle = create_path_handle_at_pos(end_pos); 
+
+    // 3. Update the Graph Logic
+    if (new_handle) {
+         // Add handle to system
+         path_system->create_destination(new_handle, true); 
+         
+         // Create the link in the graph
+         // Calculate actual path length from the drawer, not just distance
+         float path_len = glm::length(end_pos - curr_path_drawer->origin_point); 
+         path_system->add_link(draw_start_handle_id, new_handle->get_id(), path_len);
+         
+         // 4. Update the visual drawer
+         curr_path_drawer->end_drawing_at_pos(end_pos);
+
+         // 5. Set the new handle as the start for the NEXT path (so you can chain them)
+         draw_start_handle_id = new_handle->get_id();
+         curr_path_drawer->start_drawing_at_pos(end_pos);
+    }
+}
+
+Note: You need to update create_path_handle_at_pos to return Interactable*.
+2. Strategic Feature: Efficient Click Detection
+
+You asked for a way to detect clicks near the path without checking every point (which is O(N) and slow).
+
+The Solution: Spatial Hashing (Uniform Grid) Since your terrain is essentially a 2D plane (x,y) mapped to 3D, divide your terrain (0.0 to 1.0 UV space) into a grid (e.g., 20×20).
+
+    The Grid: A 2D array of lists.
+
+    Registration: When a path is created, calculate which grid cells it passes through. Add the PathID to those cells.
+
+    Query: When the mouse clicks at (x,y), calculate which cell that is. Only check the paths listed in that cell.
+
+New Class Structure:
+C++
+
+// PathCollider.h
+struct PathSegmentCollider {
+    int id_a; // Handle A ID
+    int id_b; // Handle B ID
+    std::vector<vec3> points; // The points making up the line
+};
+
+class PathSpatialGrid {
+    static const int GRID_SIZE = 32; // 32x32 grid
+    std::vector<int> grid[GRID_SIZE][GRID_SIZE]; 
+    std::vector<PathSegmentCollider> all_paths;
+
+    void get_grid_cell(float x, float y, int &gx, int &gy) {
+        // Map -0.5 -> 0.5 range to 0 -> 31
+        gx = (int)((x + 0.5f) * GRID_SIZE);
+        gy = (int)((y + 0.5f) * GRID_SIZE);
+        gx = std::clamp(gx, 0, GRID_SIZE-1);
+        gy = std::clamp(gy, 0, GRID_SIZE-1);
+    }
+
+public:
+    void register_path(int id_a, int id_b, const std::vector<vec3>& points) {
+        int index = all_paths.size();
+        all_paths.push_back({id_a, id_b, points});
+
+        // Simple rasterization: check start, end, and middle points
+        // For robustness, you should walk the line points
+        for(auto& p : points) {
+            int gx, gy;
+            get_grid_cell(p.x, p.y, gx, gy);
+            
+            // Check if index already added to this cell to avoid duplicates
+            bool found = false;
+            for(int existing : grid[gx][gy]) if(existing == index) found = true;
+            
+            if(!found) grid[gx][gy].push_back(index);
+        }
+    }
+
+    // Returns a pointer to the closest path segment, or nullptr
+    // close_point is filled with the exact point on the line
+    PathSegmentCollider* get_path_near_mouse(vec3 mouse_local, float radius, vec3& closest_point) {
+        int gx, gy;
+        get_grid_cell(mouse_local.x, mouse_local.y, gx, gy);
+
+        float min_dist = radius;
+        PathSegmentCollider* nearest = nullptr;
+
+        // Check paths in this cell
+        for (int path_idx : grid[gx][gy]) {
+            PathSegmentCollider& segment = all_paths[path_idx];
+            
+            // Iterate points in this segment (Linear check is fine here because N is small per cell)
+            for (size_t k = 0; k < segment.points.size() - 1; k++) {
+                vec3 point_on_seg = MathUtils::closest_point_on_segment(
+                    mouse_local, segment.points[k], segment.points[k+1]
+                );
+                
+                float d = glm::distance(mouse_local, point_on_seg);
+                if (d < min_dist) {
+                    min_dist = d;
+                    nearest = &segment;
+                    closest_point = point_on_seg;
+                }
+            }
+        }
+        return nearest;
+    }
+};
+
+3. Architecture Roadmap & Code Structure
+
+To support splitting paths, dragging, and Bezier curves, Line and PathSystem need to talk more closely.
+
+The Roadmap:
+
+    Centralize Path Data: Create a PathManager or upgrade PathSystem to hold the visual data (vector<vec3>) alongside the graph data (Node).
+
+    Implement "Split": To interact with a path, you are essentially deleting one link (A-B) and replacing it with two links (A-New) and (New-B).
+
+    Implement Dragging: This is a visual state. You select a path, and the drawer re-calculates the points between A and B using a Bezier curve instead of the terrain slope logic.
+
+Proposed Class Functions (Empty Stubs):
+
+Here is where the logic should live.
+In PathSystem.h (Logic Layer)
+C++
+
+class PathSystem {
+    // ... existing code ...
+
+    // Feature: Split a path
+    // Returns the ID of the new handle created at the split point
+    int split_link(int node_a, int node_b, float split_ratio, Interactable* new_handle_obj) {
+        // 1. Find existing link between A and B
+        // 2. Remove that link from path_system vector
+        // 3. Create new Destination for new_handle_obj
+        // 4. Add link A -> New
+        // 5. Add link New -> B
+        return new_handle_obj->get_id();
+    }
+    
+    // Feature: Check automatic intersection
+    // This is hard to do perfectly, usually done via checking proximity when drawing ends
+    bool check_intersection(vec3 p1, vec3 p2, int& out_intersected_link_a, int& out_intersected_link_b) {
+        // Use Spatial Grid here to find if p1-p2 crosses another segment
+        return false;
+    }
+};
+
+In MathUtils.h (Helper)
+
+You need the math to find the closest point on a line segment for the mouse detection.
+Pproj​=A+t(B−A)
+
+Where t is clamped between 0 and 1.
+C++
+
+class MathUtils {
+public:
+    static vec3 closest_point_on_segment(vec3 p, vec3 a, vec3 b) {
+        vec3 ab = b - a;
+        float t = glm::dot(p - a, ab) / glm::dot(ab, ab);
+        t = glm::clamp(t, 0.0f, 1.0f);
+        return a + t * ab;
+    }
+};
+
+In TerrainScene (Controller Layer)
+
+This handles the double-click logic.
+C++
+
+void TerrainScene::loop(float dt) {
+    // ... existing loop ...
+
+    // DOUBLE CLICK DETECTION
+    if (user_input->is_left_mouse_double_clicked()) {
+        vec3 click_pos = mouse_terrain_local_pos;
+        vec3 projected_point;
+        
+        // 1. Check if we clicked ON a path (using Spatial Grid)
+        auto* hit_path = path_spatial_grid->get_path_near_mouse(click_pos, 0.02f, projected_point);
+
+        if (hit_path) {
+            std::cout << "Path Intersection Detected!" << std::endl;
+            
+            // 2. Create a new handle exactly on the line
+            Interactable* new_handle = create_path_handle_at_pos(projected_point);
+            
+            // 3. Update Graph (Split the edge)
+            path_system->split_link(hit_path->id_a, hit_path->id_b, 0.5f, new_handle);
+            
+            // 4. Re-draw visuals
+            // You will need to delete the old Line object and create two new ones
+            regenerate_visuals_for_split(hit_path->id_a, hit_path->id_b, new_handle);
+        } else {
+            // Normal behavior: just create a handle on the ground
+            create_path_handle_at_pos(click_pos);
+        }
+    }
+}
+
+4. Roadmap for Bezier Dragging (Advanced)
+
+This is the hardest part. The logic flow is:
+
+    Selection: User clicks a segment. Store selected_segment_ids.
+
+    UI: Show a "Drag" button.
+
+    State Change: current_path_draw_mode becomes MODE_EDIT_BEZIER.
+
+    Visuals:
+
+        Hide the original Line (baked terrain points).
+
+        Show a standard BezierLine (smooth curve).
+
+        Spawn a temporary "Control Point" interactable in the middle.
+
+    Update: As user moves the Control Point, recalculate the Bezier curve equation:
+    B(t)=(1−t)2P0​+2(1−t)tP1​+t2P2​
+
+    Confirm: User clicks "Confirm". The BezierLine points are baked into a static Line again, and the PathSystem edge length is updated.
+
+Next Step for You
+
+I suggest you perform Phase 1 first: Fix the TerrainScene loop to correctly add the link to path_system when clicking in the void.
+
+Would you like me to write the implementation for MathUtils::closest_point_on_segment and the SpatialHash class so you can just copy-paste them into a header file?

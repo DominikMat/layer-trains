@@ -16,5 +16,6 @@
         "*.ndjson": "jsonl",
         "*.rmd": "markdown",
         "vector": "cpp"
-    }
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }

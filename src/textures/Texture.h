@@ -21,10 +21,9 @@ class Texture
 public:
     unsigned int ID;
     unsigned int width = -1, height = -1;
-    const char* texturePath;
 
     // generate from file path
-    Texture(const char* texturePath, bool flip_vert = true, bool load_16_bit = false) : texturePath(texturePath)
+    Texture(const char* texturePath, bool flip_vert = true, bool load_16_bit = false)
     {
         glGenTextures(1, &ID);
         glBindTexture(GL_TEXTURE_2D, ID);
@@ -47,7 +46,9 @@ public:
 
         } else {
             unsigned char *data = stbi_load(texturePath, &width, &height, &nrColourChannels, 0); 
-            if (!data) { std::cout << "Failed to load texture" << std::endl; return; }
+            if (!data) { 
+                std::cout << "Failed to load texture at path: " << texturePath << std::endl; return; 
+            }
             this->width = width;
             this->height = height;
             int colour_range = nrColourChannels == 4 ? GL_RGBA : nrColourChannels == 3 ? GL_RGB : GL_RED;
