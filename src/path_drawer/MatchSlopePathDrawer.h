@@ -40,17 +40,9 @@ public:
         TerrainPathDrawer::update_path(input_handler);
     }
 
-    void recalculate_path (Line* line, vec3 start, vec3 end, float slope) {        
-        // from a given point we can go two direction from any point along the gradient, we generate both and check 
-        // which has end closer to the end position
+    void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) {        
         float step = CONSTANT_SLOPE_PATH_POINT_STEP;
-        std::vector<vec3> path_left = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step);
-        //std::vector<vec3> path_right = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step,false);
-
-        // choose better path
-        // float dist_left = glm::length(path_left.at(path_left.size()-1) - end);
-        // float dist_right = glm::length(path_right.at(path_right.size()-1) - end);
-        // current_line_segment->set_points(dist_left < dist_right ? path_left : path_right);
+        std::vector<vec2> path_left = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step);
         line->set_points(path_left);
     }
     

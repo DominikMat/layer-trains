@@ -31,7 +31,7 @@ private:
     int hmap_width, hmap_height;
     bool height_data_loaded = false;
 
-    vector<vec3> cached_path;
+    vector<vec2> cached_path;
     CachedPathData cached_path_data;
 
 public:
@@ -78,10 +78,10 @@ public:
 
     /* Line drawing algorithm */
     void clear_cache() { cached_path.clear(); }
-    vector<vec3> generate_constant_slope_path(vec3 start, vec2 end, float slope, float step, bool direction = true) {
+    vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float slope, float step, bool direction = true) {
         
         if (!cached_path.empty() && 
-            distance(vec2(start), cached_path_data.start) < 0.001f && 
+            distance(start, cached_path_data.start) < 0.001f && 
             distance(end, cached_path_data.end) < 0.05f && 
             abs(slope - cached_path_data.slope) < 0.001f &&
             abs(step - cached_path_data.step) < 0.001f  &&
@@ -89,27 +89,28 @@ public:
             return cached_path;
         }
         
-        cached_path_data = { vec2(start), end, slope, step, 0 };
+        cached_path_data = { start, end, slope, step, 0 };
         cached_path.clear();
         cached_path.push_back(start);
 
         int max_safety_steps = 2000;
-        float min_dist_to_end = length(end - vec2(start));
+        float min_dist_to_end = length(end - start);
         int min_dist_index = 0;
 
         for(int i = 0; i < max_safety_steps; i++) {
             /* get target direction */
-            vec2 end_dir = (end-vec2(cached_path.back()));
+            vec2 end_dir = (end-cached_path.back());
             vec2 end_dir_normalise = end_dir / length(end_dir);
             
             /* add new point */
-            float target_height = cached_path.back().z + step*slope;
-            vec2 next_point = follow_slope_gradient(vec2(cached_path.back()) + end_dir_normalise*step, target_height);
-            cached_path.push_back( vec3(next_point, get_height_at_local_pos(next_point.x,next_point.y)) );
+            vec2 points_uv = local_to_uv(cached_path.back());
+            float target_height = get_height_bilinear(points_uv.x, points_uv.y) + step*slope;
+            vec2 next_point = follow_slope_gradient(cached_path.back() + end_dir_normalise*step, target_height);
+            cached_path.push_back( next_point );
 
             /* calculate final distances */
-            float dist = length(end-vec2(cached_path.back()));
-            float points_dist = length(vec2(cached_path.back())-vec2(cached_path[cached_path.size()-2]));
+            float dist = length(end-cached_path.back());
+            float points_dist = length(cached_path.back()-cached_path[cached_path.size()-2]);
             if (dist < min_dist_to_end) {
                 min_dist_to_end = dist;
                 min_dist_index = cached_path.size()-1;
@@ -123,7 +124,7 @@ public:
 
         /* Path smoothing */
         if (cached_path.size() > 2) {
-            vector<vec3> smoothed = cached_path;
+            vector<vec2> smoothed = cached_path;
             for(int i = 1; i < cached_path.size() - 1; i++) {
                 smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
             }
@@ -133,67 +134,8 @@ public:
         if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
         return cached_path;
     }
-    vector<vec3> generate_auto_slope_path(vec3 start, vec2 end, float max_slope, float step, bool direction = true) {
-        
-        if (!cached_path.empty() && 
-            distance(vec2(start), cached_path_data.start) < 0.001f && 
-            distance(end, cached_path_data.end) < 0.05f && 
-            abs(max_slope - cached_path_data.slope) < 0.001f &&
-            abs(step - cached_path_data.step) < 0.001f  && 
-            cached_path_data.mode == 1 ) { 
-            return cached_path;
-        }
-        
-        cached_path_data = { vec2(start), end, max_slope, step, 1 };
-        cached_path.clear();
-        cached_path.push_back(start);
-
-        // Calculate automatic slope
-        float end_z = get_height_at_local_pos(end.x, end.y);
-        float total_dist = length(end - vec2(start));
-        float needed_slope = (end_z - start.z) / (total_dist > 0.001f ? total_dist : 1.f);
-        float actual_slope = glm::clamp(needed_slope, -max_slope, max_slope);
-
-        int max_safety_steps = 2000;
-        float min_dist_to_end = length(end - vec2(start));
-        int min_dist_index = 0;
-
-        for(int i = 0; i < max_safety_steps; i++) {
-            /* get target direction */
-            vec2 end_dir = (end-vec2(cached_path.back()));
-            vec2 end_dir_normalise = end_dir / length(end_dir);
-            
-            /* add new point */
-            float target_height = cached_path.back().z + step*actual_slope;
-            vec2 next_point = follow_slope_gradient(vec2(cached_path.back()) + end_dir_normalise*step, target_height);
-            cached_path.push_back( vec3(next_point, get_height_at_local_pos(next_point.x,next_point.y)) );
-
-            /* calculate final distances */
-            float dist = length(end-vec2(cached_path.back()));
-            float points_dist = length(vec2(cached_path.back())-vec2(cached_path[cached_path.size()-2]));
-            if (dist < min_dist_to_end) {
-                min_dist_to_end = dist;
-                min_dist_index = cached_path.size()-1;
-            }
-
-            /* exit conditions */
-            if (points_dist < 0.5*step) break;
-            if (dist > min_dist_to_end + step*20.f) break; // heuristic
-            if (dist < step) break;
-        }
-
-        /* Path smoothing */
-        if (cached_path.size() > 2) {
-            vector<vec3> smoothed = cached_path;
-            for(int i = 1; i < cached_path.size() - 1; i++) {
-                smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
-            }
-            cached_path = smoothed;
-        }
-
-        //points.pop_back(); // last point was further from end than second to last, remove it
-        if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
-        return cached_path;
+    vector<vec2> generate_auto_slope_path(vec2 start, vec2 end, float max_slope, float step, bool direction = true) {
+        return generate_constant_slope_path(start,end,max_slope, step, direction);
     }
 
 private:
@@ -264,7 +206,7 @@ private:
             if(offset_len > 0.05f) offset = (offset / offset_len) * 0.05f; // Cap jump size
 
             pos += offset;
-            pos = clamp(pos, vec2(-0.5f), vec2(0.5f));
+            pos = clamp(pos, -0.5f, 0.5f);
         }
         return pos;
     }

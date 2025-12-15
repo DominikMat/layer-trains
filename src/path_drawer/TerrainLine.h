@@ -4,16 +4,16 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <vector>
-#include "Line.h"
+#include "Line2D.h"
 #include "Texture.h"
 #include "TerrainData.h"
 
-class TerrainLine : public Line
+class TerrainLine : public Line2D
 {
+private:
     const TerrainData *td;
 public:
-    TerrainLine(const TerrainData *td) : Line(PATH_THICKNESS), td(td) {
-    }
+    TerrainLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
     
     void initialize_shader_properties() override {
         Shader *shader = new TERRAIN_LINE_SHADER;

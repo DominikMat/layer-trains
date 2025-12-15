@@ -383,75 +383,75 @@ public:
 *** FILE: path_drawer\PathSpacialGrid.h ***
 ======================================================================
 
-// // PathCollider.h
-// struct PathSegmentCollider {
-//     int id_a; // Handle A ID
-//     int id_b; // Handle B ID
-//     std::vector<vec3> points; // The points making up the line
-// };
+// PathCollider.h
+struct PathSegmentCollider {
+    int id_a; // Handle A ID
+    int id_b; // Handle B ID
+    std::vector<vec3> points; // The points making up the line
+};
 
-// class PathSpatialGrid {
-//     static const int GRID_SIZE = 32; // 32x32 grid
-//     std::vector<int> grid[GRID_SIZE][GRID_SIZE]; 
-//     std::vector<PathSegmentCollider> all_paths;
+class PathSpatialGrid {
+    static const int GRID_SIZE = 32; // 32x32 grid
+    std::vector<int> grid[GRID_SIZE][GRID_SIZE]; 
+    std::vector<PathSegmentCollider> all_paths;
 
-//     void get_grid_cell(float x, float y, int &gx, int &gy) {
-//         // Map -0.5 -> 0.5 range to 0 -> 31
-//         gx = (int)((x + 0.5f) * GRID_SIZE);
-//         gy = (int)((y + 0.5f) * GRID_SIZE);
-//         gx = std::clamp(gx, 0, GRID_SIZE-1);
-//         gy = std::clamp(gy, 0, GRID_SIZE-1);
-//     }
+    void get_grid_cell(float x, float y, int &gx, int &gy) {
+        // Map -0.5 -> 0.5 range to 0 -> 31
+        gx = (int)((x + 0.5f) * GRID_SIZE);
+        gy = (int)((y + 0.5f) * GRID_SIZE);
+        gx = std::clamp(gx, 0, GRID_SIZE-1);
+        gy = std::clamp(gy, 0, GRID_SIZE-1);
+    }
 
-// public:
-//     void register_path(int id_a, int id_b, const std::vector<vec3>& points) {
-//         int index = all_paths.size();
-//         all_paths.push_back({id_a, id_b, points});
+public:
+    void register_path(int id_a, int id_b, const std::vector<vec3>& points) {
+        int index = all_paths.size();
+        all_paths.push_back({id_a, id_b, points});
 
-//         // Simple rasterization: check start, end, and middle points
-//         // For robustness, you should walk the line points
-//         for(auto& p : points) {
-//             int gx, gy;
-//             get_grid_cell(p.x, p.y, gx, gy);
+        // Simple rasterization: check start, end, and middle points
+        // For robustness, you should walk the line points
+        for(auto& p : points) {
+            int gx, gy;
+            get_grid_cell(p.x, p.y, gx, gy);
             
-//             // Check if index already added to this cell to avoid duplicates
-//             bool found = false;
-//             for(int existing : grid[gx][gy]) if(existing == index) found = true;
+            // Check if index already added to this cell to avoid duplicates
+            bool found = false;
+            for(int existing : grid[gx][gy]) if(existing == index) found = true;
             
-//             if(!found) grid[gx][gy].push_back(index);
-//         }
-//     }
+            if(!found) grid[gx][gy].push_back(index);
+        }
+    }
 
-//     // Returns a pointer to the closest path segment, or nullptr
-//     // close_point is filled with the exact point on the line
-//     PathSegmentCollider* get_path_near_mouse(vec3 mouse_local, float radius, vec3& closest_point) {
-//         int gx, gy;
-//         get_grid_cell(mouse_local.x, mouse_local.y, gx, gy);
+    // Returns a pointer to the closest path segment, or nullptr
+    // close_point is filled with the exact point on the line
+    PathSegmentCollider* get_path_near_mouse(vec3 mouse_local, float radius, vec3& closest_point) {
+        int gx, gy;
+        get_grid_cell(mouse_local.x, mouse_local.y, gx, gy);
 
-//         float min_dist = radius;
-//         PathSegmentCollider* nearest = nullptr;
+        float min_dist = radius;
+        PathSegmentCollider* nearest = nullptr;
 
-//         // Check paths in this cell
-//         for (int path_idx : grid[gx][gy]) {
-//             PathSegmentCollider& segment = all_paths[path_idx];
+        // Check paths in this cell
+        for (int path_idx : grid[gx][gy]) {
+            PathSegmentCollider& segment = all_paths[path_idx];
             
-//             // Iterate points in this segment (Linear check is fine here because N is small per cell)
-//             for (size_t k = 0; k < segment.points.size() - 1; k++) {
-//                 vec3 point_on_seg = MathUtils::closest_point_on_segment(
-//                     mouse_local, segment.points[k], segment.points[k+1]
-//                 );
+            // Iterate points in this segment (Linear check is fine here because N is small per cell)
+            for (size_t k = 0; k < segment.points.size() - 1; k++) {
+                vec3 point_on_seg = MathUtils::closest_point_on_segment(
+                    mouse_local, segment.points[k], segment.points[k+1]
+                );
                 
-//                 float d = glm::distance(mouse_local, point_on_seg);
-//                 if (d < min_dist) {
-//                     min_dist = d;
-//                     nearest = &segment;
-//                     closest_point = point_on_seg;
-//                 }
-//             }
-//         }
-//         return nearest;
-//     }
-// };
+                float d = glm::distance(mouse_local, point_on_seg);
+                if (d < min_dist) {
+                    min_dist = d;
+                    nearest = &segment;
+                    closest_point = point_on_seg;
+                }
+            }
+        }
+        return nearest;
+    }
+};
 
 ======================================================================
 *** FILE: path_drawer\PathSystem.h ***
@@ -1251,7 +1251,7 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        CLICK_MENU_CREATE_PATH_HANDLE = 10, 
+        CLICK_MENU_CREATE_PATH_HANDLE = 10, CLICK_MENU_CREATE_BRIDGE = 11, CLICK_MENU_CREATE_TUNNEL = 12,  CLICK_MENU_DRAG_PATH = 13, CLICK_MENU_DELETE_PATH = 14, 
         TOOL_BRIDGE=20,TOOL_TUNNEL=21,TOOL_RAIL=22,TOOL_ROAD=23
     };
     
@@ -1301,7 +1301,6 @@ public:
         interactable_manager->add(test_interact);
         
         // --- Path drawer ---
-        //terrain_path_drawer = new MatchSlopePath(terrain, world, 15.f, true);
         terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, world, true);
         terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, world, 1.f, true);
         terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, world, 0.25f, true);
@@ -1452,13 +1451,12 @@ private:
         toolbar_row = new UIRow(30, Colour::TRANSPARENT, 0);
         toolbar_row->set_anchor(UIAnchor::BOTTOM_CENTER, vec2(0,30));
         
-        const float button_size = 50.f, button_gap = 10.f;
+        const float button_size = 35.f, button_gap = 5.f;
         const vec4 toolbar_bg = Colour::DARK_GREY;
         std::string icon_filepath = TEXTURE_ICON_FILE_PATH;
 
         ToolbarPanel* toolbar_left = new ToolbarPanel(button_gap, toolbar_bg, button_size); 
-        //toolbar_left->add_button(ButtonID::TOOL_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
-        toolbar_left->add_button(ButtonID::TOOL_BRIDGE, false, new TEXTURE_MISSING);
+        toolbar_left->add_button(ButtonID::TOOL_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
         toolbar_left->add_button(ButtonID::TOOL_TUNNEL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/tunnel_tool.png").c_str()));
         toolbar_row->add_item(toolbar_left);
         ToolbarPanel* path_toolbar = new ToolbarPanel(button_gap, toolbar_bg, button_size);
@@ -1476,9 +1474,10 @@ private:
         click_menu = new UIList(0, Colour::DARK_GREY, 5);
         const float click_menu_font_size = 0.3f;
         click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_PATH_HANDLE, false) );
-        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, 3, false) );
-        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, 4, false) );
-        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, 5, false) );
+        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_BRIDGE, false) );
+        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_TUNNEL, false) );
+        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DRAG_PATH false) );
+        click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DELETE_PATH, false) );
         click_menu->set_visible(false);
         screen_ui->place( click_menu );
     }
@@ -2334,7 +2333,7 @@ void main()
         FragColor = colour * tint_colour * sampled;
     } 
     else if (useTexture) {
-        FragColor = texture(image, TexCoord) ; //* tint_colour;
+        FragColor = texture(image, TexCoord) * tint_colour;
     } 
     else {
         FragColor = colour * tint_colour;
@@ -3687,9 +3686,8 @@ public:
         glBindVertexArray(0);
     }
 
-    std::vector<Button*> get_buttons() override { 
-        std::vector<Button*> return_btns = { this };
-        return return_btns; 
+    Button* get_button() override { 
+        return this; 
     }
 
     ~Button() override {
@@ -3883,17 +3881,14 @@ public:
 #ifndef ScreenUI_H
 #define ScreenUI_H
 
-#include "Shader.h"
-#include "Object.h"
-#include "ToolbarPanel.h"
 #include "Camera.h"
+#include "UIObject.h"
+#include "Button.h"
 #include "InputHandler.h"
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
 #include <stdexcept>
-
-class Camera;
 
 using namespace glm;
 using ButtonCallback = std::function<void(int button_id, bool clicked)>;
@@ -3902,21 +3897,17 @@ class ScreenUI {
 public:
     std::vector<UIObject*> objects;
     std::vector<Button*> buttons;
-    Shader shader;
-    Camera camera;
+    Camera *camera;
     ButtonCallback button_callback;
 
-    ScreenUI () : shader(SCREEN_UI_SHADER), camera(Camera(SCR_WIDTH, SCR_HEIGHT, 0.f, 0.f, 0.f, 1.f)) { 
-        camera.set_screenspace(&shader); // always ortho projection for 2D 
-    }
+    ScreenUI () : camera(new Camera(SCR_WIDTH, SCR_HEIGHT, 0.f, 0.f, 0.f, 1.f)) {}
 
     void render(float scr_width, float scr_height) {
         
         glDisable(GL_DEPTH_TEST);
 
-        camera.set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
-        camera.set_orthographic_zoom(scr_height); // cast to pixel coordinates 
-        //shader.use();
+        camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
+        camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
         for (const auto& object_ptr : objects) {
             object_ptr->calculate_transform_matrix();   
@@ -3931,16 +3922,30 @@ public:
     }
 
     void place(UIObject* obj) {
+        if (!obj) {
+            std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
+            return;
+        }
+        for (auto o : objects) if (o == obj) {
+            std::cout << "OBJECT ALREDY ADDED TO SCREEN UI!" << std::endl;
+            return;
+        }
+
         this->objects.push_back(obj);
         obj->construct();
-        obj->set_shader(new SCREEN_UI_SHADER);
-        //obj->set_shader(&shader);
+        Shader *new_ui_shader = new SCREEN_UI_SHADER;
+        camera->set_screenspace(new_ui_shader);
+        obj->set_shader(new_ui_shader);
         obj->set_screenspace();
         obj->initialize_shader_properties();
 
         // detect and add buttons to seperate array
-        vector<Button*> obj_buttons = obj->get_buttons();
-        for (auto b : obj_buttons) buttons.push_back(b);
+        Button* obj_button = obj->get_button();
+        if(obj_button) buttons.push_back(obj_button);
+
+        // detect and place buttons to seperate array
+        vector<UIObject*> obj_children = obj->get_ui_children();
+        for (auto c : obj_children) place(c);
     }
 
     void check_button_clicked(InputHandler *ih) {
@@ -4207,16 +4212,16 @@ public:
         // 1. Create Background Rectangle
         panel_height = button_size * 1.2f;
         backgroundRect = new Panel(bg_color, vec2(0,0), vec2(0, panel_height));
-        backgroundRect->set_parent(this); 
+        backgroundRect->set_ui_parent(this); 
         backgroundRect->set_anchor(UIAnchor::CENTER, vec2(0.f));
 
         // 2. Create End Caps
         leftCap = new Circle(vec2(0,0), panel_height, bg_color);
-        leftCap->set_parent(this);
+        leftCap->set_ui_parent(this);
         leftCap->set_anchor(UIAnchor::MIDDLE_LEFT, vec2(0.f));
         
         rightCap = new Circle(vec2(0,0), panel_height, bg_color);
-        rightCap->set_parent(this);
+        rightCap->set_ui_parent(this);
         rightCap->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(0.f));
     }
 
@@ -4231,7 +4236,7 @@ public:
 
     // Helper to position and store button
     void setup_new_button(Button* btn) {
-        btn->set_parent(this);
+        btn->set_ui_parent(this);
         btn->set_screenspace(); 
         buttons.push_back(btn);
         
@@ -4263,82 +4268,13 @@ public:
         backgroundRect->recalculate_ui_position();
     }
 
-    // --- Override Core Object Functions ---
-    void construct() override {
-        backgroundRect->construct();
-        leftCap->construct();
-        rightCap->construct();
-    }
+    void construct() override {} // do nothing , only children have structure
+    void render() override {} // do nothing , only children render
 
-    void set_shader(Shader* s) override {
-        // Object::set_shader(s);
-        // backgroundRect->set_shader(s);
-        // leftCap->set_shader(s);
-        // rightCap->set_shader(s);
-        // for(auto b : buttons) b->set_shader(s);
-
-        Object::set_shader(s);
-        backgroundRect->set_shader(new SCREEN_UI_SHADER);
-        leftCap->set_shader(new SCREEN_UI_SHADER);
-        rightCap->set_shader(new SCREEN_UI_SHADER);
-        for(auto b : buttons) b->set_shader(new SCREEN_UI_SHADER);
-    }
-
-    void calculate_transform_matrix() override {
-        Object::calculate_transform_matrix(); 
-        backgroundRect->calculate_transform_matrix();
-        leftCap->calculate_transform_matrix();
-        rightCap->calculate_transform_matrix();
-        for (auto btn : buttons) btn->calculate_transform_matrix();
-    }
-
-    void render() override {
-        if (!visible) return;
-
-        // 1. Background
-        backgroundRect->update_transform(); // Uploads BG matrix
-        backgroundRect->enable_shader();
-        backgroundRect->configure_render_properties(); // Uploads BG colour
-        backgroundRect->render();
-        backgroundRect->disable_render_properties();
-        
-        // 2. Caps
-        
-        leftCap->update_transform();
-        leftCap->enable_shader();
-        leftCap->configure_render_properties();
-        leftCap->render();
-        leftCap->disable_render_properties();
-        
-        rightCap->update_transform();
-        rightCap->enable_shader();
-        rightCap->configure_render_properties();
-        rightCap->render();
-        rightCap->disable_render_properties();
-        
-        // 3. Buttons
-        for (auto btn : buttons) {
-            btn->update_transform();
-            btn->enable_shader();
-            btn->configure_render_properties();
-            btn->render();
-            btn->disable_render_properties();
-        }
-    } 
-
-    std::vector<Button*> get_buttons() override { return buttons; }
-
-    void resize_and_reposition() override {
-        UIObject::recalculate_ui_position();
-        recalculate_layout();
-    }
-
-    ~ToolbarPanel() override {
-        delete backgroundRect;
-        delete leftCap;
-        delete rightCap;
-        for (auto b : buttons) delete b;
-    }
+    // void resize_and_reposition() override {
+    //     UIObject::recalculate_ui_position();
+    //     recalculate_layout();
+    // }
 };
 
 #endif
@@ -4359,29 +4295,25 @@ class Button;
 
 class UIList : public UIObject {
 private:
-    float gap_size, padding;
-    std::vector<UIObject*> items;
-    std::vector<Button*> buttons;
-    
-    bool has_background;
-    vec4 background_color;
-    Panel* background_panel;
+    float gap_size, padding;    
+    vector<UIObject*> items;
+    bool has_background = false;
+    Panel* background_panel = nullptr;
 
 public:
     UIList(float gap, vec4 bg_col, float padding_px, vec2 pos = vec2(0.f))
         : UIObject(pos, vec2(10.f, 10.f)), // Rozmiar początkowy, zaktualizuje się sam
-          gap_size(gap), background_color(bg_col), padding(padding_px)
+          gap_size(gap), padding(padding_px)
     {
-        has_background = (bg_col.a > 0.0f);
         this->set_anchor(UIAnchor::CENTER, vec2(0.f)); // Domyślna kotwica
-
+        has_background = bg_col.a > 0.0f;
+        
         if (has_background) {
-            background_panel = new Panel(background_color, vec2(0.f), vec2(0.f));
+            background_panel = new Panel(bg_col, vec2(0.f), vec2(0.f));
             background_panel->set_parent(this);
             background_panel->set_screenspace();
             background_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
         }
-
     }
 
     void add_item(UIObject* item) {
@@ -4390,17 +4322,12 @@ public:
         item->set_parent(this);
         item->set_screenspace();
         
-        items.push_back(item);
-
         if (this->shader) {
             item->construct();
             item->set_shader(this->shader);
         }
 
         recalculate_layout();
-
-        std::vector<Button*> item_buttons = item->get_buttons();
-        for (auto* b : item_buttons) buttons.push_back(b);
     }
 
     void recalculate_layout() {
@@ -4432,78 +4359,9 @@ public:
             current_y += (item->size.y + gap_size);
         }
     }
-    
-    void construct() override {
-        for (auto* item : items) {
-            item->construct();
-        }
-        if (has_background) background_panel->construct();
-    }
 
-    void set_shader(Shader* s) override {
-        Object::set_shader(s);
-        for (auto* item : items) {
-            item->set_shader(s);
-        }
-        if (has_background) background_panel->set_shader(s);
-    }
-    
-    void calculate_transform_matrix() override {
-        Object::calculate_transform_matrix(); 
-        for (auto* item : items) {
-            item->calculate_transform_matrix();
-        }
-        if (has_background) background_panel->calculate_transform_matrix();
-    }
-
-    void render() override {
-        if (!visible) return;
-        
-        if (has_background) {
-            background_panel->enable_shader();
-            background_panel->update_transform();
-            background_panel->configure_render_properties();
-            background_panel->render();
-            background_panel->disable_render_properties();
-        }
-
-        for (auto* item : items) {
-            item->enable_shader();
-            item->update_transform();
-            item->configure_render_properties();
-            item->render();
-            item->disable_render_properties();
-        }
-    }
-
-    void clear_items() {
-        for (auto* item : items) delete item;
-        items.clear();
-        recalculate_layout();
-    }
-    
-    void resize_and_reposition() override {
-        UIObject::resize_and_reposition();
-        for(auto* item : items) {
-            item->recalculate_ui_position();
-        }
-    }
-
-    void set_visible(bool state) override {
-        Object::set_visible(state);
-        for(auto* b : buttons) {
-            b->set_visible(state); // disable button interaction if list not visible
-        }
-    }
-
-    std::vector<UIObject*> get_items() { return items; }
-    std::vector<Button*> get_buttons() override { return buttons; }
-    UIObject* get_item(int i) { return i > 0 && i <items.size() ? items[i] : nullptr; }
-
-    ~UIList() override {
-        for (auto* item : items) delete item;
-        if (has_background) delete background_panel;
-    }
+    void construct() override {} // nothing, only children construct
+    void render() override {} // nothing only children render
 };
 
 #endif
@@ -4529,6 +4387,10 @@ enum class UIAnchor {
 class Button;
 
 class UIObject : public Object {
+protected:
+    Texture *active_texture = nullptr;
+    std::vector<UIObject*> ui_children;
+
 public:
     UIAnchor anchor;
     glm::vec2 anchor_offset; // Offset from the anchor point in pixels
@@ -4557,6 +4419,10 @@ public:
             position = get_object_anchored_position(anchor, anchor_offset);
             resize_and_reposition();
         }
+    }
+    void set_ui_parent(UIObject *parent) {
+        set_parent(parent);
+        parent->add_ui_child(this);
     }
 
     vec2 get_anchor_position(UIAnchor anchor) {
@@ -4591,17 +4457,25 @@ public:
 
     virtual void resize_and_reposition() {
         recalculate_ui_position();
+        for(auto* c : ui_children) {
+            c->recalculate_ui_position();
+        }
     }
 
-    virtual std::vector<Button*> get_buttons() {
-        std::vector<Button*> empty;
-        return empty;
+    virtual Button* get_button() {
+        return nullptr;
+    }
+    std::vector<UIObject*> get_ui_children() {
+        return ui_children;
+    }
+    void add_ui_child(UIObject* child) {
+        ui_children.push_back(child);
     }
 
     virtual void configure_render_properties() override { 
         //if (!render_props_changed) return; 
         shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
-        shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, opacity));
+        shader->setVec4("tint_colour", tint_colour);
         shader->setBool("useTexture", uses_texture);    
         render_props_changed = false;
     }
@@ -4618,17 +4492,35 @@ public:
     }
 
     void initialize_shader_properties() override {
-        shader->setVec4("colour", colour);
+        shader->setVec4("colour", vec4(vec3(colour),opacity));
         shader->setVec4("tint_colour", tint_colour);
         shader->setBool("useTexture", uses_texture);    
     }
 
-    void set_texture (Texture *tex) override { 
-        uses_texture = true; 
+    void set_texture(Texture *tex) override { 
+        active_texture = tex;
+        uses_texture = true;
         shader->addTexture(tex); 
         shader->use(); 
         shader->setInt("image", shader->get_last_loaded_tex_slot()); 
         render_props_changed = true; 
+    }
+
+    void set_shader(Shader *s) override {
+        Object::set_shader(s);
+        if (active_texture != nullptr) set_texture(active_texture);
+    }
+
+    void set_visible(bool state) override {
+        Object::set_visible(state);
+        for(auto* c : ui_children) {
+            c->set_visible(state);
+        }
+    }
+
+    ~UIObject() override {
+        for (auto* c : ui_children) delete c;
+        delete this;
     }
 };
 
@@ -4650,24 +4542,21 @@ public:
 class UIRow : public UIObject {
 private:
     float gap_size, padding;
-    std::vector<UIObject*> items;
-    std::vector<Button*> buttons;
-    
-    bool has_background;
-    vec4 background_color;
-    Panel* background_panel;
+    vector<UIObject*> items;
+    bool has_background = false;
+    Panel* background_panel = nullptr;
 
 public:
     UIRow(float gap, vec4 bg_col, float padding_px, vec2 pos = vec2(0.f))
         : UIObject(pos, vec2(10.f, 10.f)), // Rozmiar początkowy, zaktualizuje się sam
-          gap_size(gap), background_color(bg_col), padding(padding_px)
+          gap_size(gap), padding(padding_px)
     {
-        has_background = (bg_col.a > 0.0f);
         this->set_anchor(UIAnchor::CENTER, vec2(0.f)); // Domyślna kotwica
+        has_background = bg_col.a > 0.0f;
 
         if (has_background) {
-            background_panel = new Panel(background_color, vec2(0.f), vec2(0.f));
-            background_panel->set_parent(this);
+            background_panel = new Panel(bg_col, vec2(0.f), vec2(0.f));
+            background_panel->set_ui_parent(this);
             background_panel->set_screenspace();
             background_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
         }
@@ -4677,7 +4566,7 @@ public:
     void add_item(UIObject* item) {
         if (!item) return;
 
-        item->set_parent(this);
+        item->set_ui_parent(this);
         item->set_screenspace();
         
         items.push_back(item);
@@ -4688,9 +4577,6 @@ public:
         }
 
         recalculate_layout();
-
-        std::vector<Button*> item_buttons = item->get_buttons();
-        for (auto* b : item_buttons) buttons.push_back(b);
     }
 
     void recalculate_layout() {
@@ -4722,78 +4608,9 @@ public:
             current_x += (item->size.x + gap_size);
         }
     }
-    
-    void construct() override {
-        for (auto* item : items) {
-            item->construct();
-        }
-        if (has_background) background_panel->construct();
-    }
 
-    void set_shader(Shader* s) override {
-        Object::set_shader(s);
-        for (auto* item : items) {
-            item->set_shader(s);
-        }
-        if (has_background) background_panel->set_shader(s);
-    }
-    
-    void calculate_transform_matrix() override {
-        Object::calculate_transform_matrix(); 
-        for (auto* item : items) {
-            item->calculate_transform_matrix();
-        }
-        if (has_background) background_panel->calculate_transform_matrix();
-    }
-
-    void render() override {
-        if (!visible) return;
-        
-        if (has_background) {
-            background_panel->enable_shader();
-            background_panel->update_transform();
-            background_panel->configure_render_properties();
-            background_panel->render();
-            background_panel->disable_render_properties();
-        }
-
-        for (auto* item : items) {
-            item->enable_shader();
-            item->update_transform();
-            item->configure_render_properties();
-            item->render();
-            item->disable_render_properties();
-        }
-    }
-
-    void clear_items() {
-        for (auto* item : items) delete item;
-        items.clear();
-        recalculate_layout();
-    }
-    
-    void resize_and_reposition() override {
-        UIObject::resize_and_reposition();
-        for(auto* item : items) {
-            item->recalculate_ui_position();
-        }
-    }
-
-    void set_visible(bool state) override {
-        Object::set_visible(state);
-        for(auto* b : buttons) {
-            b->set_visible(state); // disable button interaction if list not visible
-        }
-    }
-
-    std::vector<UIObject*> get_items() { return items; }
-    std::vector<Button*> get_buttons() override { return buttons; }
-    UIObject* get_item(int i) { return i > 0 && i <items.size() ? items[i] : nullptr; }
-
-    ~UIRow() override {
-        for (auto* item : items) delete item;
-        if (has_background) delete background_panel;
-    }
+    void construct() override {} // nothing, only children construct
+    void render() override {} // nothing only children render
 };
 
 #endif

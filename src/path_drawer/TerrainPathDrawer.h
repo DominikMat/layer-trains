@@ -73,7 +73,7 @@ public:
         current_line->clear_points();
     }
 
-    virtual void recalculate_path(Line* line, vec3 start, vec3 end, float slope_value=0.f) = 0;
+    virtual void recalculate_path(Line2D* line, vec2 start, vec2 end, float slope_value=0.f) = 0;
 
     void reset() {
         if (drawing_path) current_line->clear_points();
@@ -88,7 +88,7 @@ public:
         return drawing_path;
     }
 
-    vec3 get_end_point() {
+    vec2 get_end_point() {
         return current_line->get_last_point();
     }
 

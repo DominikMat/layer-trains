@@ -29,6 +29,13 @@ struct Node {
     int destination_id_a, destination_id_b;
     float link_length;
 };
+// struct TerrainPath {
+//     int id = -1;
+//     int start_handle_id = -1;
+//     int end_handle_id = -1;
+//     std::unique_ptr<Line> line_object = nullptr;
+//     std::vector<vec3> points;
+// };
 
 class PathSystem
 {

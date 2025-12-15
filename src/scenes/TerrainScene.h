@@ -23,7 +23,7 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        CLICK_MENU_CREATE_PATH_HANDLE = 10, 
+        CLICK_MENU_CREATE_PATH_HANDLE = 10, CLICK_MENU_CREATE_BRIDGE = 11, CLICK_MENU_CREATE_TUNNEL = 12,  CLICK_MENU_DRAG_PATH = 13, CLICK_MENU_DELETE_PATH = 14, 
         TOOL_BRIDGE=20,TOOL_TUNNEL=21,TOOL_RAIL=22,TOOL_ROAD=23
     };
     
@@ -104,7 +104,7 @@ public:
         // check end drawing
         if (user_input->is_left_mouse_pressed_up() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
-            Interactable* i = create_path_handle_at_pos (curr_path_drawer->get_end_point());
+            Interactable* i = create_path_handle_at_pos (vec3(curr_path_drawer->get_end_point(),0.f));
             if (i) { 
                 path_system->create_destination(i,true); 
                 path_system->add_link(draw_start_handle_id, i->get_id(), 10.f);
@@ -246,9 +246,10 @@ private:
         click_menu = new UIList(0, Colour::DARK_GREY, 5);
         const float click_menu_font_size = 0.3f;
         click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_PATH_HANDLE, false) );
-        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, 3, false) );
-        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, 4, false) );
-        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, 5, false) );
+        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_BRIDGE, false) );
+        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_TUNNEL, false) );
+        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DRAG_PATH, false) );
+        click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DELETE_PATH, false) );
         click_menu->set_visible(false);
         screen_ui->place( click_menu );
     }
