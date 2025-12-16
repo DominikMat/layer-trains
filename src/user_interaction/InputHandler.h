@@ -30,7 +30,8 @@ class InputHandler {
 public:
     bool simulation_paused = false, was_space_pressed = false, holding_shift = false;
     float scroll_value = 1.f, scroll_speed_multiplier = 10.f;
-    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f);     // Surowe piksele ekranu
+    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), 
+        mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f), window_size = vec2(0);     // Surowe piksele ekranu
     
     MouseClick mouse_left;
     MouseClick mouse_right;
@@ -52,8 +53,7 @@ public:
         double xpos, ypos;
         glfwGetCursorPos(glfw_window, &xpos, &ypos);
         last_mouse_position_pixels = mouse_position_pixels;
-        mouse_position_normalized = vec2((float)(xpos / SCR_WIDTH)*2.f, (0.5f - (float)(ypos / SCR_HEIGHT))*2.f);
-        mouse_position_normalized += vec2(0.011f, -0.015f); // offset idk why ???
+        mouse_position_normalized = vec2((float)(xpos / window_size.x), (1.f - (float)(ypos / window_size.y)));
         mouse_position_normalized.x = glm::clamp(mouse_position_normalized.x, 0.f, 1.f);
         mouse_position_normalized.y = glm::clamp(mouse_position_normalized.y, 0.f, 1.f);
         mouse_position_pixels = vec2(glm::clamp((float)xpos,0.f,window_size.x), glm::clamp((float)ypos,0.f,window_size.y));
@@ -63,6 +63,8 @@ public:
         update_mouse_click_logic(&mouse_left, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_LEFT), dt);
         update_mouse_click_logic(&mouse_middle, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_MIDDLE), dt);
         update_mouse_click_logic(&mouse_right, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_RIGHT), dt);
+
+        this->window_size = window_size;
     }
     
     // Scroll wheel logic
@@ -85,13 +87,13 @@ public:
 
     vec3 get_mouse_position_world() {
         // 2. Odczytaj piksel pod myszą
-        int mouse_y_gl = SCR_HEIGHT - (int)mouse_position_pixels.y; // Odwróć oś Y GL
+        int mouse_y_gl = window_size.y - (int)mouse_position_pixels.y; // Odwróć oś Y GL
         
         float pixelData[3];
         glReadBuffer(GL_COLOR_ATTACHMENT15);
 
         // Sprawdzenie granic, aby uniknąć błędów glReadPixels
-        if (mouse_position_pixels.x < 0 || mouse_position_pixels.x >= SCR_WIDTH || mouse_y_gl < 0 || mouse_y_gl >= SCR_HEIGHT) {
+        if (mouse_position_pixels.x < 0 || mouse_position_pixels.x >= window_size.x || mouse_y_gl < 0 || mouse_y_gl >= window_size.y) {
             return vec3(-1.0f);
         }
         glReadPixels((int)mouse_position_pixels.x, mouse_y_gl, 1, 1, GL_RGB, GL_FLOAT, &pixelData);

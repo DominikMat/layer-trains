@@ -74,6 +74,7 @@ public:
         }
 
         glfwMakeContextCurrent(window);
+        glfwSetWindowUserPointer(window, this);
 
         if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
             std::cout << "Failed to initialize GLAD" << std::endl;
@@ -113,8 +114,13 @@ public:
 
 private:
     static void framebuffer_size_callback(GLFWwindow* window, int width, int height){
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
+
+        Window* win_instance = static_cast<Window*>(glfwGetWindowUserPointer(window));
+        if (win_instance) {
+            win_instance->scr_width = width;
+            win_instance->scr_height = height;
+        }
     }
 };
 #endif

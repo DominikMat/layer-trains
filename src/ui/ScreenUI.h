@@ -19,15 +19,14 @@ public:
     std::vector<Button*> buttons;
     Camera *camera;
     ButtonCallback button_callback;
+    float scr_width, scr_height;
 
-    ScreenUI () : camera(new Camera(SCR_WIDTH, SCR_HEIGHT, 0.f, 0.f, 0.f, 1.f)) {}
+    ScreenUI (float window_x, float window_y) : camera(new Camera(window_x, window_y, 0.f, 0.f, 0.f, 1.f)), 
+        scr_width(scr_width), scr_height(scr_height) {}
 
-    void render(float scr_width, float scr_height) {
+    void render() {
         
         glDisable(GL_DEPTH_TEST);
-
-        camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
-        camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
         int object_count_on_loop_start = objects.size();
         for (int i=0; i<object_count_on_loop_start; i++) {
@@ -99,6 +98,20 @@ public:
 
     void clear_objects() {
         objects.clear();
+    }
+
+    void set_new_window_size(float x, float y) {
+        if (x<0 || y<0) return;
+
+        scr_width = x;
+        scr_height = y;
+
+        camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
+        camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
+
+        for (auto object_ptr : objects) {
+            object_ptr->update_screen_size(scr_width, scr_height);
+        }
     }
 };
 

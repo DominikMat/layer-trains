@@ -18,6 +18,7 @@ int main() {
     if (!window.create()) return -1;
     glfwSetScrollCallback(window.get(), InputHandler::scroll_callback);
     double last_frame_time = 0.0f;
+    vec2 prev_window_size = vec2(SCR_WIDTH,SCR_HEIGHT);
 
     // ==========================================================
     /* Create simulation objects */
@@ -25,7 +26,7 @@ int main() {
     Camera camera = Camera(SCR_WIDTH, SCR_HEIGHT, 3.f, CAMERA_FOV, CAMERA_NEAR_CLIP_PLANE, CAMERA_FAR_CLIP_PLANE * 1000);
     camera.set_min_orthographic_zoom(CAMERA_MIN_ZOOM); camera.set_max_orthographic_zoom(CAMERA_MAX_ZOOM);
     World world = World(&camera);
-    ScreenUI screen_ui = ScreenUI();
+    ScreenUI screen_ui = ScreenUI(SCR_WIDTH, SCR_HEIGHT);
     
     // ==========================================================
     /* Create scenes */
@@ -58,16 +59,19 @@ int main() {
             float dt = current_time - last_frame_time;
             dt = dt > 0.2f ? .2f : dt; // make sure dt not massive on lag spike
             last_frame_time = current_time;
+            vec2 window_size = window.get_size();
             
             /* Process user input  */
-            input_handler.process_input(window.get(), dt, window.get_size());
+            input_handler.process_input(window.get(), dt, window_size);
             screen_ui.check_button_clicked(&input_handler);
             
             /* Update camera position for shaders */
+            camera.set_screen_size(window_size.x, window_size.y);
             camera.calculate_transform_matrix();
             camera.update_dependent_shader_view_matrix();
 
-            /* Render to world position buffer texture */            
+            /* Render to world position buffer texture */      
+            if (prev_window_size != window_size) world_pos_buffer_shader->resize_worldpos_buffer(window_size.x, window_size.y);
             if (world_pos_buffer_shader){
                 glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->worldPosFBO);
                 window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
@@ -77,7 +81,7 @@ int main() {
 
             /* Current scene logic */
             current_scene->loop(dt);
-
+            
             /* Final render */
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
@@ -86,10 +90,13 @@ int main() {
                 world_pos_buffer_shader->send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
             }
             world.render();
-            screen_ui.render( SCR_WIDTH, SCR_HEIGHT );
 
+            if (prev_window_size != window_size) screen_ui.set_new_window_size(window_size.x, window_size.y);
+            screen_ui.render();
+            
             window.display(); 
-
+            prev_window_size = window_size;      
+            
             /* check window closed */
             if (!window.open()) {
                 glfwTerminate();
@@ -97,7 +104,7 @@ int main() {
             }
         }
     }
-
+    
     glfwTerminate();
     return 0;
 }
@@ -1214,6 +1221,7 @@ public:
         }
 
         glfwMakeContextCurrent(window);
+        glfwSetWindowUserPointer(window, this);
 
         if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
             std::cout << "Failed to initialize GLAD" << std::endl;
@@ -1253,8 +1261,13 @@ public:
 
 private:
     static void framebuffer_size_callback(GLFWwindow* window, int width, int height){
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
+
+        Window* win_instance = static_cast<Window*>(glfwGetWindowUserPointer(window));
+        if (win_instance) {
+            win_instance->scr_width = width;
+            win_instance->scr_height = height;
+        }
     }
 };
 #endif
@@ -1885,6 +1898,7 @@ public:
     std::vector<Texture*> textures;
     bool heightmap_enabled;
     bool uses_texture = false;
+    bool has_worldpos_buffer = false;
 
     // --- Globalne zmienne renderera (zostawiam bez zmian) ---
     GLuint worldPosFBO;          
@@ -2038,6 +2052,8 @@ public:
     }
     
     void config_worldpos_buffer() {
+        has_worldpos_buffer = true;
+
         // 2. Create the Framebuffer Object (FBO)
         glGenFramebuffers(1, &worldPosFBO);
         glBindFramebuffer(GL_FRAMEBUFFER, worldPosFBO);
@@ -2069,6 +2085,7 @@ public:
     }
 
     void bind_world_pos_buffer () {
+        if (!has_worldpos_buffer) return;
         use();
         setBool("u_renderWorldPos", false);
         glActiveTexture(GL_TEXTURE15);
@@ -2076,6 +2093,7 @@ public:
         setInt("world_pos_texture", 15);
     }
     void render_to_world_pos_buffer() {
+        if (!has_worldpos_buffer) return;
         use();
         setBool("u_renderWorldPos", true);
     }
@@ -2084,7 +2102,33 @@ public:
         setFloat("u_circleInnerRadius", inner_raduis);  
         setFloat("u_circleOuterRadius", outer_radius);
     }
+    void resize_worldpos_buffer(int new_width, int new_height) {
+        if (!has_worldpos_buffer) return;
+        if (new_width <= 0 || new_height <= 0) return;
     
+        // Delete old buffers
+        glDeleteTextures(1, &worldPosTexture);
+        glDeleteRenderbuffers(1, &worldPosDepthRBO);
+        glDeleteFramebuffers(1, &worldPosFBO);
+
+        // Recreate them (Logic copied from config_worldpos_buffer but using arguments)
+        glGenFramebuffers(1, &worldPosFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, worldPosFBO);
+
+        glGenTextures(1, &worldPosTexture);
+        glBindTexture(GL_TEXTURE_2D, worldPosTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, new_width, new_height, 0, GL_RGB, GL_FLOAT, NULL);
+        // ... set parameters ...
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, worldPosTexture, 0);
+
+        glGenRenderbuffers(1, &worldPosDepthRBO);
+        glBindRenderbuffer(GL_RENDERBUFFER, worldPosDepthRBO);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, new_width, new_height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, worldPosDepthRBO);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+        
 private:
     void checkCompileErrors(unsigned int shader, std::string type)
     {
@@ -4326,15 +4370,14 @@ public:
     std::vector<Button*> buttons;
     Camera *camera;
     ButtonCallback button_callback;
+    float scr_width, scr_height;
 
-    ScreenUI () : camera(new Camera(SCR_WIDTH, SCR_HEIGHT, 0.f, 0.f, 0.f, 1.f)) {}
+    ScreenUI (float window_x, float window_y) : camera(new Camera(window_x, window_y, 0.f, 0.f, 0.f, 1.f)), 
+        scr_width(scr_width), scr_height(scr_height) {}
 
-    void render(float scr_width, float scr_height) {
+    void render() {
         
         glDisable(GL_DEPTH_TEST);
-
-        camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
-        camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
         int object_count_on_loop_start = objects.size();
         for (int i=0; i<object_count_on_loop_start; i++) {
@@ -4406,6 +4449,20 @@ public:
 
     void clear_objects() {
         objects.clear();
+    }
+
+    void set_new_window_size(float x, float y) {
+        if (x<0 || y<0) return;
+
+        scr_width = x;
+        scr_height = y;
+
+        camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
+        camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
+
+        for (auto object_ptr : objects) {
+            object_ptr->update_screen_size(scr_width, scr_height);
+        }
     }
 };
 
@@ -4818,6 +4875,7 @@ public:
 
     void update_screen_size(float w, float h) {
         scr_width = w; scr_height = h;
+        recalculate_ui_position(); 
     }
 
     void recalculate_ui_position() {
@@ -5212,7 +5270,8 @@ class InputHandler {
 public:
     bool simulation_paused = false, was_space_pressed = false, holding_shift = false;
     float scroll_value = 1.f, scroll_speed_multiplier = 10.f;
-    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f);     // Surowe piksele ekranu
+    vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), 
+        mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f), window_size = vec2(0);     // Surowe piksele ekranu
     
     MouseClick mouse_left;
     MouseClick mouse_right;
@@ -5234,8 +5293,7 @@ public:
         double xpos, ypos;
         glfwGetCursorPos(glfw_window, &xpos, &ypos);
         last_mouse_position_pixels = mouse_position_pixels;
-        mouse_position_normalized = vec2((float)(xpos / SCR_WIDTH)*2.f, (0.5f - (float)(ypos / SCR_HEIGHT))*2.f);
-        mouse_position_normalized += vec2(0.011f, -0.015f); // offset idk why ???
+        mouse_position_normalized = vec2((float)(xpos / window_size.x), (1.f - (float)(ypos / window_size.y)));
         mouse_position_normalized.x = glm::clamp(mouse_position_normalized.x, 0.f, 1.f);
         mouse_position_normalized.y = glm::clamp(mouse_position_normalized.y, 0.f, 1.f);
         mouse_position_pixels = vec2(glm::clamp((float)xpos,0.f,window_size.x), glm::clamp((float)ypos,0.f,window_size.y));
@@ -5245,6 +5303,8 @@ public:
         update_mouse_click_logic(&mouse_left, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_LEFT), dt);
         update_mouse_click_logic(&mouse_middle, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_MIDDLE), dt);
         update_mouse_click_logic(&mouse_right, glfwGetMouseButton(glfw_window, GLFW_MOUSE_BUTTON_RIGHT), dt);
+
+        this->window_size = window_size;
     }
     
     // Scroll wheel logic
@@ -5267,13 +5327,13 @@ public:
 
     vec3 get_mouse_position_world() {
         // 2. Odczytaj piksel pod myszą
-        int mouse_y_gl = SCR_HEIGHT - (int)mouse_position_pixels.y; // Odwróć oś Y GL
+        int mouse_y_gl = window_size.y - (int)mouse_position_pixels.y; // Odwróć oś Y GL
         
         float pixelData[3];
         glReadBuffer(GL_COLOR_ATTACHMENT15);
 
         // Sprawdzenie granic, aby uniknąć błędów glReadPixels
-        if (mouse_position_pixels.x < 0 || mouse_position_pixels.x >= SCR_WIDTH || mouse_y_gl < 0 || mouse_y_gl >= SCR_HEIGHT) {
+        if (mouse_position_pixels.x < 0 || mouse_position_pixels.x >= window_size.x || mouse_y_gl < 0 || mouse_y_gl >= window_size.y) {
             return vec3(-1.0f);
         }
         glReadPixels((int)mouse_position_pixels.x, mouse_y_gl, 1, 1, GL_RGB, GL_FLOAT, &pixelData);

@@ -77,6 +77,7 @@ public:
 
     void update_screen_size(float w, float h) {
         scr_width = w; scr_height = h;
+        recalculate_ui_position(); 
     }
 
     void recalculate_ui_position() {

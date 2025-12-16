@@ -14,6 +14,7 @@ int main() {
     if (!window.create()) return -1;
     glfwSetScrollCallback(window.get(), InputHandler::scroll_callback);
     double last_frame_time = 0.0f;
+    vec2 prev_window_size = vec2(SCR_WIDTH,SCR_HEIGHT);
 
     // ==========================================================
     /* Create simulation objects */
@@ -21,7 +22,7 @@ int main() {
     Camera camera = Camera(SCR_WIDTH, SCR_HEIGHT, 3.f, CAMERA_FOV, CAMERA_NEAR_CLIP_PLANE, CAMERA_FAR_CLIP_PLANE * 1000);
     camera.set_min_orthographic_zoom(CAMERA_MIN_ZOOM); camera.set_max_orthographic_zoom(CAMERA_MAX_ZOOM);
     World world = World(&camera);
-    ScreenUI screen_ui = ScreenUI();
+    ScreenUI screen_ui = ScreenUI(SCR_WIDTH, SCR_HEIGHT);
     
     // ==========================================================
     /* Create scenes */
@@ -54,16 +55,19 @@ int main() {
             float dt = current_time - last_frame_time;
             dt = dt > 0.2f ? .2f : dt; // make sure dt not massive on lag spike
             last_frame_time = current_time;
+            vec2 window_size = window.get_size();
             
             /* Process user input  */
-            input_handler.process_input(window.get(), dt, window.get_size());
+            input_handler.process_input(window.get(), dt, window_size);
             screen_ui.check_button_clicked(&input_handler);
             
             /* Update camera position for shaders */
+            camera.set_screen_size(window_size.x, window_size.y);
             camera.calculate_transform_matrix();
             camera.update_dependent_shader_view_matrix();
 
-            /* Render to world position buffer texture */            
+            /* Render to world position buffer texture */      
+            if (prev_window_size != window_size) world_pos_buffer_shader->resize_worldpos_buffer(window_size.x, window_size.y);
             if (world_pos_buffer_shader){
                 glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->worldPosFBO);
                 window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
@@ -73,7 +77,7 @@ int main() {
 
             /* Current scene logic */
             current_scene->loop(dt);
-
+            
             /* Final render */
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
@@ -82,10 +86,13 @@ int main() {
                 world_pos_buffer_shader->send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
             }
             world.render();
-            screen_ui.render( SCR_WIDTH, SCR_HEIGHT );
 
+            if (prev_window_size != window_size) screen_ui.set_new_window_size(window_size.x, window_size.y);
+            screen_ui.render();
+            
             window.display(); 
-
+            prev_window_size = window_size;      
+            
             /* check window closed */
             if (!window.open()) {
                 glfwTerminate();
@@ -93,7 +100,7 @@ int main() {
             }
         }
     }
-
+    
     glfwTerminate();
     return 0;
 }

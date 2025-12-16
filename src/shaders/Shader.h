@@ -27,6 +27,7 @@ public:
     std::vector<Texture*> textures;
     bool heightmap_enabled;
     bool uses_texture = false;
+    bool has_worldpos_buffer = false;
 
     // --- Globalne zmienne renderera (zostawiam bez zmian) ---
     GLuint worldPosFBO;          
@@ -180,6 +181,8 @@ public:
     }
     
     void config_worldpos_buffer() {
+        has_worldpos_buffer = true;
+
         // 2. Create the Framebuffer Object (FBO)
         glGenFramebuffers(1, &worldPosFBO);
         glBindFramebuffer(GL_FRAMEBUFFER, worldPosFBO);
@@ -211,6 +214,7 @@ public:
     }
 
     void bind_world_pos_buffer () {
+        if (!has_worldpos_buffer) return;
         use();
         setBool("u_renderWorldPos", false);
         glActiveTexture(GL_TEXTURE15);
@@ -218,6 +222,7 @@ public:
         setInt("world_pos_texture", 15);
     }
     void render_to_world_pos_buffer() {
+        if (!has_worldpos_buffer) return;
         use();
         setBool("u_renderWorldPos", true);
     }
@@ -226,7 +231,33 @@ public:
         setFloat("u_circleInnerRadius", inner_raduis);  
         setFloat("u_circleOuterRadius", outer_radius);
     }
+    void resize_worldpos_buffer(int new_width, int new_height) {
+        if (!has_worldpos_buffer) return;
+        if (new_width <= 0 || new_height <= 0) return;
     
+        // Delete old buffers
+        glDeleteTextures(1, &worldPosTexture);
+        glDeleteRenderbuffers(1, &worldPosDepthRBO);
+        glDeleteFramebuffers(1, &worldPosFBO);
+
+        // Recreate them (Logic copied from config_worldpos_buffer but using arguments)
+        glGenFramebuffers(1, &worldPosFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, worldPosFBO);
+
+        glGenTextures(1, &worldPosTexture);
+        glBindTexture(GL_TEXTURE_2D, worldPosTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, new_width, new_height, 0, GL_RGB, GL_FLOAT, NULL);
+        // ... set parameters ...
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, worldPosTexture, 0);
+
+        glGenRenderbuffers(1, &worldPosDepthRBO);
+        glBindRenderbuffer(GL_RENDERBUFFER, worldPosDepthRBO);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, new_width, new_height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, worldPosDepthRBO);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+        
 private:
     void checkCompileErrors(unsigned int shader, std::string type)
     {
