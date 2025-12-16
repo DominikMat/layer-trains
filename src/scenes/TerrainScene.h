@@ -92,6 +92,7 @@ public:
     }
 
     void loop(float dt) override {
+        // update camera controls
         camera_controls(dt);
 
         // update terrain path'
@@ -107,9 +108,10 @@ public:
         if (user_input->is_left_mouse_pressed_up() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
             
-            int new_handle_id = path_system->create_path_handle_at_pos(mouse_terrain_local_pos);
-            TerrainLinkData new_path = curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos, new_handle_id);
-            path_system->add_link(new_path);
+            if (curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos)) {
+                int new_handle_id = path_system->create_path_handle_at_pos(curr_path_drawer->get_end_point());
+                path_system->add_link( curr_path_drawer->create_terrain_link(new_handle_id) );
+            }
         }
         
         /* slope value display */
@@ -149,13 +151,14 @@ public:
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
                 if (!curr_path_drawer->is_drawing_path()) {
-                    curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id());
-                    interactable->disable();
+                    if (curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id())){
+                        interactable->disable();
+                    }
                 }
                 else {
-                    TerrainLinkData new_link = curr_path_drawer->end_drawing_at_pos(interactable->position, interactable->get_id());
-                    path_system->add_link(new_link);                    
-                    last_scroll_value = user_input->get_scroll_value();
+                    if(curr_path_drawer->end_drawing_at_pos(interactable->position)){
+                        path_system->add_link( curr_path_drawer->create_terrain_link(interactable->get_id()) );                    
+                    }
 
                     // std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
                     // if(path_system->are_necessary_destinations_connected()) 
@@ -173,6 +176,7 @@ public:
         ButtonID id = (ButtonID) button_id;
 
         switch (id) {
+            /* CHANGE DRAWING MODE BUTTONS */
             case ButtonID::MODE_STRAIGHT_PATH:
             case ButtonID::MODE_AUTO_SLOPE:
             case ButtonID::MODE_ISO_PATH:
@@ -204,11 +208,9 @@ public:
 private:
     void camera_controls(float dt) {
         /* Zoom control */
-        if (!curr_path_drawer->is_drawing_path()){
-            float delta_scroll = user_input->get_scroll_value() - last_scroll_value;
-            last_scroll_value = user_input->get_scroll_value();
-            camera->change_orthographic_zoom(delta_scroll); 
-        }
+        float delta_scroll = user_input->get_scroll_value() - last_scroll_value;
+        last_scroll_value = user_input->get_scroll_value();
+        if (!curr_path_drawer->is_drawing_path()) camera->change_orthographic_zoom(delta_scroll); 
 
         /* Blender-like camera movement */
         if (user_input->is_right_mouse_held()){
