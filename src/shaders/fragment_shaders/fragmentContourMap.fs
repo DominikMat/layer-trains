@@ -121,7 +121,7 @@ void main(){
     /* Draw iso lines */
     if (!sea_pixel) {
         float base_spacing = 10.0; 
-        float minor = gridLayer(current_elevation, base_spacing * 1.0, 1.5, 19.0);
+        float minor = gridLayer(current_elevation, base_spacing * 1.0, 1.5, 17.0);
         float medium = gridLayer(current_elevation, base_spacing * 5.0, 2.25, 15.0);
         float major = gridLayer(current_elevation, base_spacing * 20.0, 3.0, 10.0);
         float total_line = max(major, max(medium, minor));

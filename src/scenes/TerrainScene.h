@@ -116,7 +116,7 @@ public:
         
         /* slope value display */
         bool display_slope_info = current_path_draw_mode != ButtonID::MODE_STRAIGHT_PATH;
-        if (display_slope_info) slope_display->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->slope*100.f)) + "%");
+        if (display_slope_info) slope_display->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->get_slope()*100.f)) + "%");
         slope_display->set_visible(display_slope_info);
     
         /* click menu logic */

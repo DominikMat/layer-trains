@@ -36,7 +36,7 @@ public:
 
     Terrain(const TerrainData *terrain_data, World *w, InteractableManager *interactable_manager, Camera *camera, vec3 pos = vec3(0.f)) :
         //terrain_shader(new DEFAULT_WORLD_SHADER),
-        elevation_line_drawer(terrain_data->heightmap_path, terrain_data->vertical_scale),
+        elevation_line_drawer(terrain_data->heightmap_path, terrain_data->vertical_scale, true),
         terrain_data(terrain_data), heightmap_texture(Texture(terrain_data->heightmap_path, true, true))
     {
         // Setup the physical plane object for terrain and floor

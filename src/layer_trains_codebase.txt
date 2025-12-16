@@ -127,36 +127,14 @@ using namespace std;
 class AutoSlopePathDrawer : public TerrainPathDrawer
 {
 public:
-    float max_slope = 15.f;
-
-    float scroll_speed_before = 0.f;
-    float last_scroll_value = 1.f;
-    bool modify_scroll_on_next_update = false;
-
     AutoSlopePathDrawer (Terrain *terrain, float max_slope = 1.f, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,max_slope,debug_msg), max_slope(max_slope) { }   
-
-    void update_path (InputHandler *input_handler) override {
-        /* modify max slope */
-        float delta_scroll = input_handler->get_scroll_value() - last_scroll_value;
-        last_scroll_value = input_handler->get_scroll_value();
-        float prev_slope = max_slope;
-        max_slope = glm::clamp(-1.f, max_slope + delta_scroll*PATH_DRAW_SLOPE_CHANGE_SPEED, 1.f);
-        set_slope(max_slope);
-
-        TerrainPathDrawer::update_path(input_handler);
-    }
+        : TerrainPathDrawer(terrain,0.f,max_slope,debug_msg) { }   
 
     void recalculate_path (Line2D* line, vec2 start, vec2 end, float max_slope) override{        
         float step = CONSTANT_SLOPE_PATH_POINT_STEP;
         std::vector<vec2> path_left = terrain->elevation_line_drawer.generate_auto_slope_path(start,end,max_slope,step);
         line->set_points(path_left);
     }
-    
-    /* Slope */
-    void change_max_slope (float new_slope) { max_slope = new_slope; }
-    float get_current_max_slope() { return max_slope; }
-    
 };
 
 #endif
@@ -186,109 +164,15 @@ using namespace std;
 class MatchSlopePathDrawer : public TerrainPathDrawer
 {
 public:
-    float current_slope = 0.f;
-    float max_slope = 15.f;
-
-    float scroll_speed_before = 0.f;
-    float last_scroll_value = 1.f;
-    bool modify_scroll_on_next_update = false;
-
     MatchSlopePathDrawer (Terrain *terrain, float max_slope = 1.f, bool debug_msg = false) 
-        : TerrainPathDrawer(terrain,0.f,debug_msg), max_slope(max_slope) { }   
-
-    void update_path (InputHandler *input_handler) override {
-        /* modify slope */
-        float delta_scroll = input_handler->get_scroll_value() - last_scroll_value;
-        last_scroll_value = input_handler->get_scroll_value();
-        float prev_slope = current_slope;
-        current_slope = glm::clamp(-max_slope, current_slope + delta_scroll*PATH_DRAW_SLOPE_CHANGE_SPEED, max_slope);
-        set_slope(current_slope);
-
-        TerrainPathDrawer::update_path(input_handler);
-    }
+        : TerrainPathDrawer(terrain,0.f,max_slope,debug_msg) { }   
 
     void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) {        
         float step = CONSTANT_SLOPE_PATH_POINT_STEP;
         std::vector<vec2> path_left = terrain->elevation_line_drawer.generate_constant_slope_path(start,end,slope,step);
         line->set_points(path_left);
     }
-    
-    /* Slope */
-    void change_max_slope (float new_slope) { max_slope = new_slope; }
-    float get_current_slope() { return current_slope; }
-    
 };
-
-
-
-    // void update_path (InputHandler *input_handler) override {
-    //     vec3 mouse_pos_world = input_handler->get_mouse_position_world();
-    //     vec4 local_pos_4 = glm::inverse(terrain->terrain_obj.get_transform()) * vec4(mouse_pos_world, 1.f);
-    //     vec3 mouse_pos_local = vec3(local_pos_4);
-
-    //     if (modify_scroll_on_next_update) {
-    //         modify_scroll_on_next_update = false;
-    //         if (drawing_path) {
-    //             scroll_speed_before = input_handler->get_scroll_speed();
-    //             input_handler->set_scroll_speed( PATH_DRAW_SLOPE_CHANGE_SPEED );
-    //             last_scroll_value = input_handler->get_scroll_value();
-    //         } else {
-    //             input_handler->set_scroll_speed( scroll_speed_before );
-    //         }
-    //     }
-    //     if (drawing_path) {
-            
-    //         /* modify slope */
-    //         float delta_scroll = input_handler->get_scroll_value() - last_scroll_value;
-    //         last_scroll_value = input_handler->get_scroll_value();
-    //         float prev_slope = current_slope;
-    //         current_slope = glm::clamp(-max_slope, current_slope + delta_scroll*PATH_DRAW_SLOPE_CHANGE_SPEED, max_slope);
-
-    //         // Update path to mouse
-    //         if (abs(mouse_pos_local.x) <= 0.5f && abs(mouse_pos_local.y) <= 0.5f) {
-    //             std::vector<vec3> segment = terrain->elevation_line_drawer.get_active_path_segment(
-    //                 origin_point, mouse_pos_local, current_slope, prev_slope != current_slope);
-                
-    //             // Lift line slightly to avoid Z-fighting (Local Z up)
-    //             for(auto& p : segment) p.z += 0.005f; 
-                
-    //             current_line_segment->set_points(segment);
-    //         }
-
-    //     }
-    // }
-
-    // void start_drawing_at_pos (vec3 local_pos) override {
-    //     if (abs(local_pos.x) <= 0.5f && abs(local_pos.y) <= 0.5f) {
-    //         drawing_path = true;
-    //         modify_scroll_on_next_update = true;
-    //         origin_point = local_pos;
-
-    //         create_new_line_segment();
-            
-    //         terrain->elevation_line_drawer.clear_cache();
-    //         // Force generate initial segment
-    //         std::vector<vec3> segment = terrain->elevation_line_drawer.get_active_path_segment(origin_point, local_pos, current_slope, true);
-    //         current_line_segment->set_points(segment);
-    //         if (debug_msg) std::cout << "Path started." << std::endl;
-    //     }
-
-    // }
-    
-    // void end_drawing_at_pos (vec3 local_pos) override {
-    //     std::vector<vec3> segment = terrain->elevation_line_drawer.get_active_path_segment(origin_point, local_pos, current_slope, true);
-    //     current_line_segment->set_points(segment);
-        
-    //     drawing_path = false;
-    //     modify_scroll_on_next_update = true;
-    //     end_point = segment[segment.size()-1];
-        
-    //     if (debug_msg) std::cout << (segment.size() > 1 ? "Path set." : "Path empty") << std::endl;
-    // }
-
-    // /* Slope */
-    // void change_slope (float new_slope) { current_slope = new_slope; }
-    // float get_current_slope() { return current_slope; }
 
 #endif
 
@@ -296,75 +180,97 @@ public:
 *** FILE: path_drawer\PathSpacialGrid.h ***
 ======================================================================
 
-// PathCollider.h
-struct PathSegmentCollider {
-    int id_a; // Handle A ID
-    int id_b; // Handle B ID
-    std::vector<vec3> points; // The points making up the line
-};
+#ifndef PATHSPATIALGRID_H
+#define PATHSPATIALGRID_H
+
+#include "settings/Utility.h"
+#include <vector>
+#include <algorithm>
+
+using namespace glm;
+
 
 class PathSpatialGrid {
-    static const int GRID_SIZE = 32; // 32x32 grid
-    std::vector<int> grid[GRID_SIZE][GRID_SIZE]; 
-    std::vector<PathSegmentCollider> all_paths;
 
-    void get_grid_cell(float x, float y, int &gx, int &gy) {
-        // Map -0.5 -> 0.5 range to 0 -> 31
-        gx = (int)((x + 0.5f) * GRID_SIZE);
-        gy = (int)((y + 0.5f) * GRID_SIZE);
-        gx = std::clamp(gx, 0, GRID_SIZE-1);
-        gy = std::clamp(gy, 0, GRID_SIZE-1);
-    }
+private:
+    struct GridEntry {
+        int link_id;
+        vec2 exact_position;
+    };
+    static const int GRID_SIZE = 32; 
+    const float GRID_STEP = 1.f / GRID_SIZE;
+    std::vector<GridEntry> grid[GRID_SIZE][GRID_SIZE];
 
 public:
-    void register_path(int id_a, int id_b, const std::vector<vec3>& points) {
-        int index = all_paths.size();
-        all_paths.push_back({id_a, id_b, points});
-
-        // Simple rasterization: check start, end, and middle points
-        // For robustness, you should walk the line points
-        for(auto& p : points) {
-            int gx, gy;
-            get_grid_cell(p.x, p.y, gx, gy);
-            
-            // Check if index already added to this cell to avoid duplicates
-            bool found = false;
-            for(int existing : grid[gx][gy]) if(existing == index) found = true;
-            
-            if(!found) grid[gx][gy].push_back(index);
-        }
+    void clear() {
+        for(int x=0; x<GRID_SIZE; x++)
+            for(int y=0; y<GRID_SIZE; y++) grid[x][y].clear();
     }
 
-    // Returns a pointer to the closest path segment, or nullptr
-    // close_point is filled with the exact point on the line
-    PathSegmentCollider* get_path_near_mouse(vec3 mouse_local, float radius, vec3& closest_point) {
-        int gx, gy;
-        get_grid_cell(mouse_local.x, mouse_local.y, gx, gy);
-
-        float min_dist = radius;
-        PathSegmentCollider* nearest = nullptr;
-
-        // Check paths in this cell
-        for (int path_idx : grid[gx][gy]) {
-            PathSegmentCollider& segment = all_paths[path_idx];
-            
-            // Iterate points in this segment (Linear check is fine here because N is small per cell)
-            for (size_t k = 0; k < segment.points.size() - 1; k++) {
-                vec3 point_on_seg = MathUtils::closest_point_on_segment(
-                    mouse_local, segment.points[k], segment.points[k+1]
-                );
-                
-                float d = glm::distance(mouse_local, point_on_seg);
-                if (d < min_dist) {
-                    min_dist = d;
-                    nearest = &segment;
-                    closest_point = point_on_seg;
+    void register_path_segment(int add_link_id, vector<vec2> points) 
+    {    
+        // find all distinct grid cells where path points lay
+        ivec2 last_grid_point = ivec2(0);
+        for (auto p : points) {
+            ivec2 grid_pos = get_grid_cell(p);
+            if (grid_pos != last_grid_point) {
+                GridEntry new_entry = { add_link_id, p };
+                grid[grid_pos.x][grid_pos.y].push_back(new_entry);
+            }
+            last_grid_point = grid_pos;
+        }
+    }
+    void unregister_path_segment(int remove_link_id) 
+    {
+        // im sorry comuputer , it has to be done 
+        // go thru whole grid and remove all idx matching remove_link_id
+        for (int x=0; x<GRID_SIZE; x++) {
+            for (int y=0; y<GRID_SIZE; y++) {
+                for (int i=0; i<grid[x][y].size(); i++) {
+                    int link_id = grid[x][y][i].link_id;
+                    if (link_id == remove_link_id) {
+                        grid[x][y].erase(grid[x][y].begin()+i);
+                    }
                 }
             }
         }
-        return nearest;
+    }
+
+    // Returns -1 if no path found, otherwise returns link_index
+    int get_link_at_pos(vec2 pos, float radius, vec2& out_closest_point) 
+    {
+        // check what area of grid need to be checked (minimum is 3x3 because we might be on grid cell edge)
+        int search_size = 1 + (int)(radius / GRID_STEP);
+        
+        ivec2 grid_cell = get_grid_cell(pos);
+        float min_dist = radius + 0.00001f;
+        int found_link = -1;
+
+        for (int x=grid_cell.x-search_size; x<grid_cell.x+search_size; x++) {
+            for (int y=grid_cell.y-search_size; y<grid_cell.y+search_size; y++) { 
+                if (x<0 || y<0 || x>=GRID_SIZE || y>=GRID_SIZE) continue;
+                for (GridEntry entry : grid[x][y]) {
+                    float dist = glm::distance(pos, entry.exact_position);
+                    if (dist < min_dist) {
+                        min_dist = dist;
+                        found_link = entry.link_id;
+                        out_closest_point = entry.exact_position;
+                    }
+                }
+            }
+        }
+        return found_link; // will be -1 if no links in range
+    }
+
+private:
+    ivec2 get_grid_cell(vec2 point) {
+        int gx = (int)((point.x + 0.5f) * GRID_SIZE);
+        int gy = (int)((point.y + 0.5f) * GRID_SIZE);
+        return ivec2(std::clamp(gx, 0, GRID_SIZE-1), gy = std::clamp(gy, 0, GRID_SIZE-1));
     }
 };
+
+#endif
 
 ======================================================================
 *** FILE: path_drawer\PathSystem.h ***
@@ -385,19 +291,22 @@ public:
 #include "InputHandler.h"
 #include "TerrainLine.h"
 #include "Interactable.h"
+#include "PathSpacialGrid.h"
+#include <set>
 
 using namespace glm;
 using namespace std;
 
 enum NodeDestinationType { 
-    NONE=0, OPTIONAL=1, NECESSARY=2
-}
+    NO_DEST=0, OPTIONAL=1, NECESSARY=2
+};
 struct TerrainNode {
     int handle_id;
     vec2 position;
     int connected_system = 0;
-    NodeDestinationType destination_type = NodeDestinationType::NONE;
+    NodeDestinationType destination_type = NodeDestinationType::NO_DEST;
     bool intersection = false;
+    bool optional = false;
 };
 struct TerrainLinkData {
     int start_handle_id;
@@ -406,6 +315,7 @@ struct TerrainLinkData {
     std::vector<vec2> points;
 };
 struct TerrainLink {
+    int link_id;
     int start_handle_id;
     int end_handle_id;
 
@@ -417,10 +327,13 @@ class TerrainPathSystem
 protected:
     Terrain *terrain;
     InteractableManager *interactable_manager;
+    PathSpatialGrid spatial_grid;
 
     int node_id = 0, connected_system_number = 0;
-
+    int link_number = 0;
+    
     /* graph data */
+    std::unordered_map<int, std::vector<int>> adjacency_list;
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
 
@@ -443,12 +356,25 @@ public:
     void add_link(TerrainLinkData new_link_data) {
         TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
         line->set_parent(terrain->terrain_obj);
-        TerrainLink new_link = { new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+        TerrainLink new_link = { link_number++, new_link_data.start_handle_id, new_link_data.end_handle_id, line };
         links.push_back(new_link);
 
         // Merging Logic: Propagate the smaller ID to the larger ID group
         // ???
+
+        spatial_grid.register_path_segment(new_link.link_id, new_link_data.points);
     }
+
+    void remove_link(int id) {
+        for (auto l:links) {
+            if (l.link_id == id) {
+                l.line_obj->set_visible(false);
+                spatial_grid.unregister_path_segment(id);
+                return;
+            }
+        }
+    }
+
 
     int create_new_node(vec2 local_pos) {
         TerrainNode new_node = { node_id++, local_pos, connected_system_number++ };
@@ -459,23 +385,138 @@ public:
     int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
         int id = create_path_handle_at_pos(local_pos, name);
         nodes.back().destination_type = destination_type;
+        return id;
     }
 
-    bool are_necessary_destinations_connected() {
-        int current_path_system_id = -1;
-        for (auto x : nodes) {
-            if (x.destination_type == NodeDestinationType::NONE) continue;
-            if (!x->optional) {
-                if (current_path_system_id == -1) current_path_system_id = x.connected_system;
-                else if (x.connected_system != current_path_system_id) return false;
-            }
-        }
-        return true;
+    // bool are_necessary_destinations_connected() {
+    //     int current_path_system_id = -1;
+    //     for (auto x : nodes) {
+    //         if (x.destination_type == NodeDestinationType::NO_DEST) continue;
+    //         if (!x.optional) {
+    //             if (current_path_system_id == -1) current_path_system_id = x.connected_system;
+    //             else if (x.connected_system != current_path_system_id) return false;
+    //         }
+    //     }
+    //     return true;
+    // }
+
+    int get_link_at_pos(vec2 pos, float radius, vec2& out_closest_point) {
+        return spatial_grid.get_link_at_pos(pos, radius, out_closest_point);
     }
+
 };
 
 #endif
 
+// ===================================================================================================================================
+
+// #ifndef PATHSYSTEM_H
+// #define PATHSYSTEM_H
+
+// #include <glad/glad.h>
+// #include <GLFW/glfw3.h>
+// #include <glm/glm.hpp>
+// #include <vector>
+// #include <queue>
+// #include <unordered_map>
+// #include <limits>
+// #include <algorithm>
+// #include "Terrain.h"
+// #include "InputHandler.h"
+// #include "TerrainLine.h"
+// #include "Interactable.h"
+
+// using namespace glm;
+// using namespace std;
+
+// enum NodeDestinationType { 
+//     NONE=0, OPTIONAL=1, NECESSARY=2
+// }
+// struct TerrainNode {
+//     int handle_id;
+//     vec2 position;
+//     int connected_system = 0;
+//     NodeDestinationType destination_type = NodeDestinationType::NONE;
+//     bool intersection = false;
+// };
+// struct TerrainLinkData {
+//     int start_handle_id;
+//     int end_handle_id;
+
+//     std::vector<vec2> points;
+// };
+// struct TerrainLink {
+//     int start_handle_id;
+//     int end_handle_id;
+
+//     TerrainLine *line_obj;
+// };
+
+// class TerrainPathSystem 
+// {
+// protected:
+//     Terrain *terrain;
+//     InteractableManager *interactable_manager;
+
+//     int node_id = 0, connected_system_number = 0;
+
+//     /* graph data */
+//     vector<TerrainNode> nodes;
+//     vector<TerrainLink> links;
+
+// public:
+//     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
+
+    
+//     int create_path_handle_at_pos (vec2 local_pos, const char* name = "Path Handle") {
+//         Interactable *i = interactable_manager->create(
+//             vec3(0.f), name, InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE, node_id
+//         );
+//         float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
+//         float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
+//         terrain->attach_to_surface(i, uvx, uvy);
+//         int id = create_new_node(local_pos);
+//         cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << ", id: " << id << endl;
+//         return id; // will increase in create_new_node fn
+//     } 
+
+//     void add_link(TerrainLinkData new_link_data) {
+//         TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
+//         line->set_parent(terrain->terrain_obj);
+//         TerrainLink new_link = { new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+//         links.push_back(new_link);
+
+//         // Merging Logic: Propagate the smaller ID to the larger ID group
+//         // ???
+//     }
+
+//     int create_new_node(vec2 local_pos) {
+//         TerrainNode new_node = { node_id++, local_pos, connected_system_number++ };
+//         nodes.push_back(new_node);
+//         return nodes.back().handle_id;
+//     }
+
+//     int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
+//         int id = create_path_handle_at_pos(local_pos, name);
+//         nodes.back().destination_type = destination_type;
+//     }
+
+//     bool are_necessary_destinations_connected() {
+//         int current_path_system_id = -1;
+//         for (auto x : nodes) {
+//             if (x.destination_type == NodeDestinationType::NONE) continue;
+//             if (!x->optional) {
+//                 if (current_path_system_id == -1) current_path_system_id = x.connected_system;
+//                 else if (x.connected_system != current_path_system_id) return false;
+//             }
+//         }
+//         return true;
+//     }
+// };
+
+// #endif
+
+// ===================================================================================================================================
 // #ifndef PATHSYSTEM_H
 // #define PATHSYSTEM_H
 
@@ -853,22 +894,31 @@ public:
     vec3 origin_point;
     bool drawing_path = false, debug_msg = false;
     float slope = 0.f;
+    float max_slope = 0.15f;
+    float last_scroll_value = 1.f;
 
     int start_draw_handle;
 
     Terrain *terrain;
     TerrainLine *current_line;
 
-    TerrainPathDrawer (Terrain *terrain, float slope, bool debug_msg = false) 
-        : terrain(terrain), debug_msg(debug_msg), slope(slope) {
+    TerrainPathDrawer (Terrain *terrain, float slope, float max_slope = 0.15f, bool debug_msg = false) 
+        : terrain(terrain), debug_msg(debug_msg), slope(slope), max_slope(max_slope) {
         
         current_line = new TerrainLine(terrain->terrain_data);
         current_line->set_parent(terrain->terrain_obj);
     }   
 
     virtual void update_path (InputHandler *input_handler) {
+        /* track scroll value */
+        float scroll_value = input_handler->get_scroll_value();
+        float delta_scroll = scroll_value - last_scroll_value;
+        last_scroll_value = scroll_value;
+        
+        /* drawing functions - modify slope  */
         if (!drawing_path) return;
-
+        slope = glm::clamp(-max_slope, slope + delta_scroll*PATH_DRAW_SLOPE_CHANGE_SPEED, max_slope);
+        
         /* draw path to mouse terrain pos */
         vec3 mouse_pos_world = input_handler->get_mouse_position_world();
         vec4 local_pos_4 = glm::inverse(terrain->terrain_obj->get_transform()) * vec4(mouse_pos_world, 1.f);
@@ -880,24 +930,28 @@ public:
 
     }
     
-    virtual void start_drawing_at_pos (vec3 local_pos, int handle_id) {
-        if (abs(local_pos.x) <= 0.5f && abs(local_pos.y) <= 0.5f) {
-            start_draw_handle = handle_id;
-            drawing_path = true;
-            origin_point = local_pos;            
-            if (debug_msg) std::cout << "Path started." << std::endl;
-        }
+    virtual bool start_drawing_at_pos (vec3 local_pos, int handle_id) {
+        if (abs(local_pos.x) > 0.5f || abs(local_pos.y) > 0.5f) return false;
         
+        start_draw_handle = handle_id;
+        drawing_path = true;
+        origin_point = local_pos;            
+        if (debug_msg) std::cout << "Path started." << std::endl;
+        return true;
     }
     
-    virtual TerrainLinkData end_drawing_at_pos (vec3 local_pos, int handle_id) {
+    virtual bool end_drawing_at_pos (vec3 local_pos) {
+        if (abs(local_pos.x) > 0.5f || abs(local_pos.y) > 0.5f) return false;
+        
         drawing_path = false;
         recalculate_path(current_line, origin_point, local_pos, slope);
 
         if (debug_msg) std::cout << (current_line->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
-
+        return true;
+    }
+    TerrainLinkData create_terrain_link(int end_handle_id) {
         TerrainLinkData new_link = {
-            start_draw_handle, handle_id, current_line->get_points()
+            start_draw_handle, end_handle_id, current_line->get_points()
         };
         current_line->clear_points();
         return new_link;
@@ -905,25 +959,14 @@ public:
 
     virtual void recalculate_path(Line2D* line, vec2 start, vec2 end, float slope_value=0.f) = 0;
 
-    void reset() {
-        if (drawing_path) current_line->clear_points();
-        drawing_path = false;
-    }
-    void clear_path() {
-        current_line->clear_points();
-    }
-    
-    bool is_drawing_path() {
-        return drawing_path;
-    }
-
-    vec2 get_end_point() {
-        return current_line->get_last_point();
-    }
-
-    void set_slope(float slope) {
-        this->slope = slope;
-    }
+    void reset() { current_line->clear_points(); drawing_path = false; }
+    void clear_path() { current_line->clear_points(); }
+    bool is_drawing_path() { return drawing_path; }
+    vec2 get_end_point() { return current_line->get_last_point(); }
+    void set_slope(float slope) { this->slope = slope; }
+    void set_max_slope(float max_slope) { this->max_slope = max_slope; }
+    float get_slope() { return slope; }
+    float get_max_slope() { return max_slope; }
 
     ~TerrainPathDrawer() { clear_path();  }
 };
@@ -1295,8 +1338,9 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        CLICK_MENU_CREATE_PATH_HANDLE = 10, CLICK_MENU_CREATE_BRIDGE = 11, CLICK_MENU_CREATE_TUNNEL = 12,  CLICK_MENU_DRAG_PATH = 13, CLICK_MENU_DELETE_PATH = 14, 
-        TOOL_BRIDGE=20,TOOL_TUNNEL=21,TOOL_RAIL=22,TOOL_ROAD=23
+        TOOL_BRIDGE,TOOL_TUNNEL,TOOL_RAIL,TOOL_ROAD,
+        BUTTON_CREATE_PATH_HANDLE, BUTTON_CREATE_BRIDGE, BUTTON_CREATE_TUNNEL, 
+        BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
     };
     
     InteractableManager *interactable_manager;
@@ -1309,12 +1353,14 @@ private:
     float last_scroll_value = 1.f;
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
+    int click_menu_link_id_selected = 0;
 
     TerrainPathSystem *path_system;
     TextPanel *slope_display;
     Interactable *test_interact;
 
-    UIList *click_menu;
+    UIList *terrain_click_menu;
+    UIList *path_click_menu;
     UIRow *toolbar_row;
     vec3 reference_pos_terrain_local;
 
@@ -1362,6 +1408,7 @@ public:
     }
 
     void loop(float dt) override {
+        // update camera controls
         camera_controls(dt);
 
         // update terrain path'
@@ -1377,21 +1424,38 @@ public:
         if (user_input->is_left_mouse_pressed_up() && curr_path_drawer->is_drawing_path() 
             && glm::length(mouse_terrain_local_pos-curr_path_drawer->origin_point) > INTERACTABLE_INTERACT_DISTANCE) {
             
-            int new_handle_id = path_system->create_path_handle_at_pos(mouse_terrain_local_pos);
-            TerrainLinkData new_path = curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos, new_handle_id);
-            path_system->add_link(new_path);
+            if (curr_path_drawer->end_drawing_at_pos(mouse_terrain_local_pos)) {
+                int new_handle_id = path_system->create_path_handle_at_pos(curr_path_drawer->get_end_point());
+                path_system->add_link( curr_path_drawer->create_terrain_link(new_handle_id) );
+            }
         }
         
         /* slope value display */
         bool display_slope_info = current_path_draw_mode != ButtonID::MODE_STRAIGHT_PATH;
-        if (display_slope_info) slope_display->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->slope*100.f)) + "%");
+        if (display_slope_info) slope_display->set_text((std::string)(current_path_draw_mode == ButtonID::MODE_AUTO_SLOPE ? "max " : "") + "slope: " + std::to_string((int)(curr_path_drawer->get_slope()*100.f)) + "%");
         slope_display->set_visible(display_slope_info);
     
         /* click menu logic */
-        if ((user_input->is_right_mouse_double_clicked() || user_input->is_left_mouse_double_clicked()) && !click_menu->visible) {
-            click_menu_change_visible(true, mouse_pos_world, mouse_terrain_local_pos);
-        } else if ((user_input->is_left_mouse_pressed_down() || user_input->is_right_mouse_pressed_down()) && click_menu->visible) {
-            if (!click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) click_menu_change_visible(false);
+        if ((user_input->is_right_mouse_double_clicked() || user_input->is_left_mouse_double_clicked())) {
+            vec2 path_closest_point;
+            int link_id = path_system->get_link_at_pos(mouse_terrain_local_pos, CURSOR_OUTER_RADIUS, path_closest_point);
+            if (!path_click_menu->visible && link_id != -1){
+                float local_height = terrain->elevation_line_drawer.get_height_at_local_pos(path_closest_point.x,path_closest_point.y);
+                vec4 path_world_pos = terrain->terrain_obj->get_transform() * vec4(path_closest_point, local_height, 1.f);
+                click_menu_link_id_selected = link_id;
+                click_menu_change_visible(path_click_menu, true, vec3(path_world_pos), vec3(path_closest_point,local_height));
+            }
+            else if (!terrain_click_menu->visible) {
+                click_menu_change_visible(terrain_click_menu, true, mouse_pos_world, mouse_terrain_local_pos);
+            }
+        } 
+        else if (user_input->is_left_mouse_pressed_down() || user_input->is_right_mouse_pressed_down()) {
+            if (terrain_click_menu->visible && !terrain_click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) {
+                click_menu_change_visible(terrain_click_menu, false);
+            }
+            if (path_click_menu->visible && !path_click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) {
+                click_menu_change_visible(path_click_menu, false);
+            }
         }
     }
 
@@ -1403,13 +1467,14 @@ public:
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
                 if (!curr_path_drawer->is_drawing_path()) {
-                    curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id());
-                    interactable->disable();
+                    if (curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id())){
+                        interactable->disable();
+                    }
                 }
                 else {
-                    TerrainLinkData new_link = curr_path_drawer->end_drawing_at_pos(interactable->position, interactable->get_id());
-                    path_system->add_link(new_link);                    
-                    last_scroll_value = user_input->get_scroll_value();
+                    if(curr_path_drawer->end_drawing_at_pos(interactable->position)){
+                        path_system->add_link( curr_path_drawer->create_terrain_link(interactable->get_id()) );                    
+                    }
 
                     // std::cout << "NEW DESTINATION CONNECTED! :))) " << interactable->name << std::endl;
                     // if(path_system->are_necessary_destinations_connected()) 
@@ -1427,16 +1492,29 @@ public:
         ButtonID id = (ButtonID) button_id;
 
         switch (id) {
+            /* CHANGE DRAWING MODE BUTTONS */
             case ButtonID::MODE_STRAIGHT_PATH:
             case ButtonID::MODE_AUTO_SLOPE:
             case ButtonID::MODE_ISO_PATH:
                 current_path_draw_mode = (int)id; 
                 break;
 
-            case ButtonID::CLICK_MENU_CREATE_PATH_HANDLE:
+            /* TERRAIN CLICK MENU */
+            case ButtonID::BUTTON_CREATE_PATH_HANDLE:
                 path_system->create_path_handle_at_pos(reference_pos_terrain_local);
-                click_menu_change_visible(false);
+                click_menu_change_visible(terrain_click_menu, false);
                 break;
+
+            /* PATH CLICK MENU */
+            case ButtonID::BUTTON_CREATE_INTERSECTION:
+                path_system->create_path_handle_at_pos(reference_pos_terrain_local);
+                click_menu_change_visible(path_click_menu, false);
+                break;
+            case ButtonID::BUTTON_DELETE_PATH:
+                path_system->remove_link(click_menu_link_id_selected);
+                click_menu_change_visible(path_click_menu, false);
+                break;
+            
         }
         terrain_path_drawer[current_path_draw_mode]->reset(); 
 
@@ -1446,11 +1524,9 @@ public:
 private:
     void camera_controls(float dt) {
         /* Zoom control */
-        if (!curr_path_drawer->is_drawing_path()){
-            float delta_scroll = user_input->get_scroll_value() - last_scroll_value;
-            last_scroll_value = user_input->get_scroll_value();
-            camera->change_orthographic_zoom(delta_scroll); 
-        }
+        float delta_scroll = user_input->get_scroll_value() - last_scroll_value;
+        last_scroll_value = user_input->get_scroll_value();
+        if (!curr_path_drawer->is_drawing_path()) camera->change_orthographic_zoom(delta_scroll); 
 
         /* Blender-like camera movement */
         if (user_input->is_right_mouse_held()){
@@ -1496,19 +1572,25 @@ private:
         toolbar_row->add_item(toolbar_right);
         screen_ui->place(toolbar_row);
 
-        /* click menu */
-        click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        /* click menu(s) */
         const float click_menu_font_size = 0.3f;
-        click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_PATH_HANDLE, false) );
-        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_BRIDGE, false) );
-        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_TUNNEL, false) );
-        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DRAG_PATH, false) );
-        click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DELETE_PATH, false) );
-        click_menu->set_visible(false);
-        screen_ui->place( click_menu );
+
+        terrain_click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        terrain_click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_PATH_HANDLE, false) );
+        terrain_click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_BRIDGE, false) );
+        terrain_click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_TUNNEL, false) );
+        terrain_click_menu->set_visible(false);
+        screen_ui->place( terrain_click_menu );
+
+        path_click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        path_click_menu->add_item( new TextButton("create intersection", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_INTERSECTION, false) );
+        path_click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DRAG_PATH, false) );
+        path_click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DELETE_PATH, false) );
+        path_click_menu->set_visible(false);
+        screen_ui->place( path_click_menu );
     }
 
-    void click_menu_change_visible(bool state, vec3 mouse_world=vec3(0), vec3 mouse_local=vec3(0)) {
+    void click_menu_change_visible(UIList *click_menu, bool state, vec3 mouse_world=vec3(0), vec3 mouse_local=vec3(0)) {
         // enable
         if (state){
             vec2 mouse_pos_px = user_input->get_mouse_position_pixels(); mouse_pos_px.y *= -1;
@@ -2256,7 +2338,7 @@ void main(){
     /* Draw iso lines */
     if (!sea_pixel) {
         float base_spacing = 10.0; 
-        float minor = gridLayer(current_elevation, base_spacing * 1.0, 1.5, 19.0);
+        float minor = gridLayer(current_elevation, base_spacing * 1.0, 1.5, 17.0);
         float medium = gridLayer(current_elevation, base_spacing * 5.0, 2.25, 15.0);
         float major = gridLayer(current_elevation, base_spacing * 20.0, 3.0, 10.0);
         float total_line = max(major, max(medium, minor));
@@ -2550,6 +2632,8 @@ void main()
 #ifndef ELEVATIONLINEDRAWER_H
 #define ELEVATIONLINEDRAWER_H
 
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include "textures/Texture.h"
 #include "settings/Settings.h"
 #include "Heightmap.h" 
@@ -2558,7 +2642,9 @@ void main()
 #include <cmath>
 #include <algorithm>
 #include <glm/glm.hpp>
+#include <glm/gtx/vector_angle.hpp> 
 #include <cfloat>
+
 
 // Helper for high-precision math
 #define PI 3.14159265359f
@@ -2576,6 +2662,7 @@ class ElevationLineDrawer
 private:
     float heightmap_scale;
     void* height_data; 
+    // Gradient data removed - not needed for sampling approach
     bool is_16bit_data;
     int hmap_width, hmap_height;
     bool height_data_loaded = false;
@@ -2586,7 +2673,7 @@ private:
 public:
     ElevationLineDrawer(const char* heightmap_path, float heightmap_scale, bool use_16bit = false) 
         : heightmap_scale(heightmap_scale), is_16bit_data(use_16bit) 
-    {
+    {        
         stbi_set_flip_vertically_on_load(true); 
         int width, height, nrChannels;
         if (is_16bit_data) {
@@ -2598,9 +2685,11 @@ public:
 
         if (!height_data) {
             std::cerr << "ERROR: Failed to load heightmap data." << std::endl;
+            return;
         } else {
             height_data_loaded = true;
         }
+        // Removed load_gradient() call
     }
 
     ~ElevationLineDrawer() {
@@ -2609,87 +2698,193 @@ public:
         }
     }
 
-    /* uv is [0,1] terrain position, these function return local position and height  */
     float get_height_at_uv(float u, float v) {
         return get_height_bilinear(u*hmap_width,v*hmap_height) * heightmap_scale;
     }
+
+    /* local position is [-.5,.5] terrain position */
+    float get_height_at_local_pos(float x, float y) {
+        if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
+        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
+    }
+    
     glm::vec3 get_local_pos_from_uv(float u, float v) {
         u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);
         return vec3(u-.5f,v-.5f,get_height_at_uv(u,v));
     }
 
-    /* local position is [-.5,.5] terrain position, these function return local position and height  */
-    float get_height_at_local_pos(float x, float y) {
-        if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
-        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
-    }
-    glm::vec2 local_to_uv(glm::vec2 local) { return glm::vec2(local.x-0.5f,local.y-0.5f); }
-
     /* Line drawing algorithm */
     void clear_cache() { cached_path.clear(); }
-    vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float slope, float step, bool direction = true) {
+    
+    // ==========================================================
+    // MODE 1: CONSTANT SLOPE
+    // Tries to find a path where dH/dist is constant
+    // ==========================================================
+vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slope, float step, bool direction = true) {
         
         if (!cached_path.empty() && 
             distance(start, cached_path_data.start) < 0.001f && 
             distance(end, cached_path_data.end) < 0.05f && 
-            abs(slope - cached_path_data.slope) < 0.001f &&
+            abs(target_slope - cached_path_data.slope) < 0.001f &&
             abs(step - cached_path_data.step) < 0.001f  &&
             cached_path_data.mode == 0 ) { 
             return cached_path;
         }
         
-        cached_path_data = { start, end, slope, step, 0 };
+        cached_path_data = { start, end, target_slope, step, 0 };
         cached_path.clear();
         cached_path.push_back(start);
 
-        int max_safety_steps = 2000;
-        float min_dist_to_end = length(end - start);
-        int min_dist_index = 0;
+        vec2 current_pos = start;
+        const int MAX_STEPS = 2000;
+        
+        // Increased samples for precision finding the "perfect" exit angle
+        const int SAMPLES = 32; 
+        const float MAX_ANGLE = radians(85.0f); 
+        
+        // STRICTNESS SETTING: 
+        // Max allowed deviation from target slope. 
+        // e.g., if target is 0.10, allows 0.08 to 0.12
+        const float SLOPE_TOLERANCE = 0.08f; 
 
-        for(int i = 0; i < max_safety_steps; i++) {
-            /* get target direction */
-            vec2 end_dir = (end-cached_path.back());
-            vec2 end_dir_normalise = end_dir / length(end_dir);
+        for(int i = 0; i < MAX_STEPS; i++) {
+            float dist_to_end = distance(current_pos, end);
+            if (dist_to_end < step) {
+                cached_path.push_back(end);
+                break;
+            }
+
+            vec2 dir_to_target = normalize(end - current_pos);
+            float current_h = get_height_at_local_pos(current_pos.x, current_pos.y);
+
+            float best_dist_score = FLT_MAX;
+            vec2 best_next_pos = current_pos;
+            bool found_valid_step = false;
+
+            // Sample in a fan shape
+            for (int s = 0; s < SAMPLES; s++) {
+                float t = (float)s / (SAMPLES - 1); 
+                float angle = -MAX_ANGLE + t * (2 * MAX_ANGLE);
+                
+                float cs = cos(angle);
+                float sn = sin(angle);
+                vec2 sample_dir = vec2(dir_to_target.x * cs - dir_to_target.y * sn, 
+                                       dir_to_target.x * sn + dir_to_target.y * cs);
+                
+                vec2 candidate_pos = current_pos + sample_dir * step;
+                
+                if (abs(candidate_pos.x) > 0.5f || abs(candidate_pos.y) > 0.5f) continue;
+
+                float candidate_h = get_height_at_local_pos(candidate_pos.x, candidate_pos.y);
+                float height_diff = candidate_h - current_h;
+                float actual_slope = height_diff / step;
+
+                // --- THE FIX ---
+                // 1. Hard Filter: Is the slope within tolerance?
+                if (abs(actual_slope - target_slope) > SLOPE_TOLERANCE) continue;
+
+                // 2. Tie-Breaker: Pick the valid candidate that moves closest to the destination
+                float dist_score = distance(candidate_pos, end);
+
+                if (dist_score < best_dist_score) {
+                    best_dist_score = dist_score;
+                    best_next_pos = candidate_pos;
+                    found_valid_step = true;
+                }
+            }
             
-            /* add new point */
-            vec2 points_uv = local_to_uv(cached_path.back());
-            float target_height = get_height_bilinear(points_uv.x, points_uv.y) + step*slope;
-            vec2 next_point = follow_slope_gradient(cached_path.back() + end_dir_normalise*step, target_height);
-            cached_path.push_back( next_point );
-
-            /* calculate final distances */
-            float dist = length(end-cached_path.back());
-            float points_dist = length(cached_path.back()-cached_path[cached_path.size()-2]);
-            if (dist < min_dist_to_end) {
-                min_dist_to_end = dist;
-                min_dist_index = cached_path.size()-1;
-            }
-
-            /* exit conditions */
-            if (points_dist < 0.5*step) break;
-            if (dist > min_dist_to_end + step*20.f) break; // heuristic
-            if (dist < step) break;
+            // If no valid step found (e.g., hit a cliff where even 85-degree turns 
+            // result in a slope too steep), STOP drawing.
+            if (!found_valid_step) break; 
+            
+            current_pos = best_next_pos;
+            cached_path.push_back(current_pos);
         }
 
-        /* Path smoothing */
-        if (cached_path.size() > 2) {
-            vector<vec2> smoothed = cached_path;
-            for(int i = 1; i < cached_path.size() - 1; i++) {
-                smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
-            }
-            cached_path = smoothed;
-        }
-
-        if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
         return cached_path;
     }
-    vector<vec2> generate_auto_slope_path(vec2 start, vec2 end, float max_slope, float step, bool direction = true) {
-        return generate_constant_slope_path(start,end,max_slope, step, direction);
+    
+    // ==========================================================
+    // MODE 2: AUTO SLOPE (Greedy Best-First)
+    // Tries to find the path of least resistance (minimizing steepness)
+    // ==========================================================
+    vector<vec2> generate_auto_slope_path(vec2 start, vec2 end, float max_allowed_slope, float step) {
+        
+        // Cache Check (reuse struct with mode 1)
+        if (!cached_path.empty() && 
+            distance(start, cached_path_data.start) < 0.001f && 
+            distance(end, cached_path_data.end) < 0.05f && 
+            cached_path_data.mode == 1 ) { 
+            return cached_path;
+        }
+
+        cached_path_data = { start, end, max_allowed_slope, step, 1 };
+        cached_path.clear();
+        cached_path.push_back(start);
+
+        vec2 current_pos = start;
+        const int MAX_STEPS = 2000;
+        
+        const int SAMPLES = 7; 
+        const float MAX_ANGLE = radians(60.0f);
+
+        for(int i = 0; i < MAX_STEPS; i++) {
+            float dist_to_end = distance(current_pos, end);
+            if (dist_to_end < step) {
+                cached_path.push_back(end);
+                break;
+            }
+
+            vec2 dir_to_target = normalize(end - current_pos);
+            float current_h = get_height_at_local_pos(current_pos.x, current_pos.y);
+
+            float best_score = FLT_MAX;
+            vec2 best_next_pos = current_pos + dir_to_target * step;
+
+            for (int s = 0; s < SAMPLES; s++) {
+                float t = (float)s / (SAMPLES - 1);
+                float angle = -MAX_ANGLE + t * (2 * MAX_ANGLE);
+                
+                float cs = cos(angle);
+                float sn = sin(angle);
+                vec2 sample_dir = vec2(dir_to_target.x * cs - dir_to_target.y * sn, 
+                                       dir_to_target.x * sn + dir_to_target.y * cs);
+                
+                vec2 candidate_pos = current_pos + sample_dir * step;
+                
+                if (abs(candidate_pos.x) > 0.5f || abs(candidate_pos.y) > 0.5f) continue;
+
+                float candidate_h = get_height_at_local_pos(candidate_pos.x, candidate_pos.y);
+                float height_diff = candidate_h - current_h;
+                float actual_slope = abs(height_diff / step); // Absolute slope
+
+                // SCORE CALCULATION:
+                // 1. Steepness cost
+                float steepness_cost = actual_slope * 2.0f;
+                
+                // 2. Distance cost (A* Heuristic: closer to goal is better)
+                float dist_cost = distance(candidate_pos, end);
+
+                // 3. Penalty if slope exceeds max allowed
+                float penalty = 0.0f;
+                if (actual_slope > max_allowed_slope) penalty = 1000.0f;
+
+                float score = steepness_cost + dist_cost + penalty;
+
+                if (score < best_score) {
+                    best_score = score;
+                    best_next_pos = candidate_pos;
+                }
+            }
+            
+            current_pos = best_next_pos;
+            cached_path.push_back(current_pos);
+        }
+
+        return cached_path;
     }
 
 private:
-    // this function returns the height value for any x,y given in fractional pixel values
-    // eg. pixel value of x=1.5f is average height from pixel 1 and pixel 2 together
     float get_height_bilinear(float x, float y) {
         if (!height_data_loaded) return 0.f;
         int x0 = (int)x; int y0 = (int)y;
@@ -2705,64 +2900,329 @@ private:
         float h1 = glm::mix(h01, h11, sx);
         return glm::mix(h0, h1, sy);
     }
+    float get_height_bilinear(vec2 p) { return get_height_bilinear(p.x,p.y); }
 
     float get_raw_height(int x, int y) {
         if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) return 0.0f;
         size_t index = (size_t)y * hmap_width + x;
 
         if (is_16bit_data) {
-            // Rzutowanie void* na unsigned short* i odczyt 16-bitowej wartości
             unsigned short* data_16bit = static_cast<unsigned short*>(height_data);
             unsigned short raw_value = data_16bit[index];
-            // Normalizacja 16-bitowej wartości (0-65535) do float (0.0-1.0)
-            return (float)raw_value / 65535.0f; 
+            return (float)raw_value / 65535.0f;
         } else {
-            // Rzutowanie void* na unsigned char* i odczyt 8-bitowej wartości
             unsigned char* data_8bit = static_cast<unsigned char*>(height_data);
             unsigned char raw_value = data_8bit[index];
-            // Normalizacja 8-bitowej wartości (0-255) do float (0.0-1.0)
             return (float)raw_value / 255.0f;
         }
     }   
-
-    vec2 follow_slope_gradient(vec2 pos, float target_height) {
-        const int MAX_ITERATIONS = 8; // Reduced iterations for performance
-        const float DISTANCE_EPSILON = 0.001f; 
-        float eps = 1.0f / (float)hmap_width; 
-
-        for (int i = 0; i < MAX_ITERATIONS; i++) {
-            float current_h = get_height_at_local_pos(pos.x, pos.y);
-            float diff = target_height - current_h;
-
-            if (abs(diff) < DISTANCE_EPSILON) return pos;
-
-            float h_x1 = get_height_at_local_pos(pos.x + eps, pos.y);
-            float h_x2 = get_height_at_local_pos(pos.x - eps, pos.y);
-            float grad_x = (h_x1 - h_x2) / (2.0f * eps);
-
-            float h_y1 = get_height_at_local_pos(pos.x, pos.y + eps);
-            float h_y2 = get_height_at_local_pos(pos.x, pos.y - eps);
-            float grad_y = (h_y1 - h_y2) / (2.0f * eps);
-
-            vec2 gradient(grad_x, grad_y);
-            float grad_len_sq = dot(gradient, gradient);
-
-            if (grad_len_sq < 0.000001f) break; // Flat terrain
-
-            // Limit step size to avoid shooting off into infinity on flat slopes
-            vec2 offset = gradient * (diff / grad_len_sq);
-            float offset_len = length(offset);
-            if(offset_len > 0.05f) offset = (offset / offset_len) * 0.05f; // Cap jump size
-
-            pos += offset;
-            pos = clamp(pos, -0.5f, 0.5f);
-        }
-        return pos;
-    }
-    
 };
 
 #endif
+
+// #ifndef ELEVATIONLINEDRAWER_H
+// #define ELEVATIONLINEDRAWER_H
+
+// #include "textures/Texture.h"
+// #include "settings/Settings.h"
+// #include "Heightmap.h" 
+// #include "world_objects/Line.h"
+// #include <vector>
+// #include <cmath>
+// #include <algorithm>
+// #include <glm/glm.hpp>
+// #include <cfloat>
+
+// // Helper for high-precision math
+// #define PI 3.14159265359f
+// using namespace glm;
+// using namespace std;
+
+// struct CachedPathData {
+//     vec2 start, end;
+//     float slope, step;
+//     int mode; // 0 - match slope, 1 - auto
+// };
+
+// class ElevationLineDrawer
+// {
+// private:
+//     float heightmap_scale;
+//     void* height_data; 
+//     std::vector<vec2> gradient_data;
+//     bool is_16bit_data;
+//     int hmap_width, hmap_height;
+//     bool height_data_loaded = false;
+
+//     vector<vec2> cached_path;
+//     CachedPathData cached_path_data;
+
+// public:
+//     ElevationLineDrawer(const char* heightmap_path, float heightmap_scale, bool use_16bit = false) 
+//         : heightmap_scale(heightmap_scale), is_16bit_data(use_16bit) 
+//     {        
+//         stbi_set_flip_vertically_on_load(true); 
+//         int width, height, nrChannels;
+//         if (is_16bit_data) {
+//             height_data = stbi_load_16(heightmap_path, &width, &height, &nrChannels, 1);
+//         } else {
+//             height_data = stbi_load(heightmap_path, &width, &height, &nrChannels, 1);
+//         }
+//         hmap_width = width; hmap_height = height;
+
+//         if (!height_data) {
+//             std::cerr << "ERROR: Failed to load heightmap data." << std::endl;
+//             return;
+//         } else {
+//             height_data_loaded = true;
+//         }
+
+//         /* load gradient data */
+//         load_gradient();
+//     }
+
+//     ~ElevationLineDrawer() {
+//         if (height_data_loaded && height_data) {
+//             stbi_image_free(height_data);
+//             gradient_data.clear();
+//         }
+//     }
+
+//     /* uv is [0,1] terrain position, these function return local position and height  */
+//     float get_height_at_uv(float u, float v) {
+//         return get_height_bilinear(u*hmap_width,v*hmap_height) * heightmap_scale;
+//     }
+//     glm::vec3 get_local_pos_from_uv(float u, float v) {
+//         u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);
+//         return vec3(u-.5f,v-.5f,get_height_at_uv(u,v));
+//     }
+
+//     /* local position is [-.5,.5] terrain position, these function return local position and height  */
+//     float get_height_at_local_pos(float x, float y) {
+//         if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
+//         return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
+//     }
+//     glm::vec2 local_to_uv(glm::vec2 local) { return glm::vec2(local.x-0.5f,local.y-0.5f); }
+
+//     /* Line drawing algorithm */
+//     void clear_cache() { cached_path.clear(); }
+    
+//     vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float slope, float step, bool direction = true) {
+        
+//         if (!cached_path.empty() && 
+//             distance(start, cached_path_data.start) < 0.001f && 
+//             distance(end, cached_path_data.end) < 0.05f && 
+//             abs(slope - cached_path_data.slope) < 0.001f &&
+//             abs(step - cached_path_data.step) < 0.001f  &&
+//             cached_path_data.mode == 0 ) { 
+//             return cached_path;
+//         }
+        
+//         cached_path_data = { start, end, slope, step, 0 };
+//         cached_path.clear();
+//         cached_path.push_back(start);
+
+//         int max_safety_steps = 2000;
+//         float min_dist_to_end = length(end - start);
+//         int min_dist_index = 0;
+
+//         for(int i = 0; i < max_safety_steps; i++) {
+//             /* get target direction */
+//             vec2 end_dir = (end-cached_path.back());
+//             vec2 end_dir_normalise = end_dir / length(end_dir);
+            
+//             /* add new point */
+//             vec2 points_uv = local_to_uv(cached_path.back());
+//             float target_height = get_height_bilinear(points_uv.x, points_uv.y) + step*slope;
+//             vec2 next_point = follow_slope_gradient_to_target_height(cached_path.back() + end_dir_normalise*step, target_height);
+//             cached_path.push_back( next_point );
+
+//             /* calculate final distances */
+//             float dist = length(end-cached_path.back());
+//             float points_dist = length(cached_path.back()-cached_path[cached_path.size()-2]);
+//             if (dist < min_dist_to_end) {
+//                 min_dist_to_end = dist;
+//                 min_dist_index = cached_path.size()-1;
+//             }
+
+//             /* exit conditions */
+//             if (points_dist < 0.5*step) break;
+//             if (dist > min_dist_to_end + step*20.f) break; // heuristic
+//             if (dist < step) break;
+//         }
+
+//         /* Path smoothing */
+//         if (cached_path.size() > 2) {
+//             vector<vec2> smoothed = cached_path;
+//             for(int i = 1; i < cached_path.size() - 1; i++) {
+//                 smoothed[i] = (cached_path[i-1] + cached_path[i] + cached_path[i+1]) / 3.0f;
+//             }
+//             cached_path = smoothed;
+//         }
+
+//         if (min_dist_index < cached_path.size() - 1) cached_path.resize(min_dist_index+1);
+//         return cached_path;
+//     }
+    
+//     vector<vec2> generate_auto_slope_path(vec2 start, vec2 end, float max_slope, float step) {
+//         /* first generate a straight path with equally spaced points*/
+//         float path_dist = glm::length(end-start);
+//         int point_num = (int)(path_dist / step) + 2;
+//         std::vector<vec2> points; points.resize(point_num);
+//         points[0] = start;
+//         for (int i=1; i<point_num-1; i++) {
+//             float t = (float)i / (point_num-1);
+//             points[i] = vec2(end.x*t + start.x*(1.f-t), end.y*t + start.y*(1.f-t));
+//         }
+//         points[point_num-1] = end;
+
+//         /* path data */
+//         float start_height = get_height_bilinear(start);
+//         float delta_height = get_height_bilinear(end) - start_height;
+
+//         /* for each point in straight path check if height above / below ideal constatnt slope path */
+//         /* then follow gradient to that target */
+//         const int mini_steps_num = 16;
+//         for (int mini_step=0; mini_step<mini_steps_num; mini_step++){
+//             for (int i=1; i<point_num-1; i++) {
+//                 float target_height = start_height + ((float)i / (point_num-1)) * delta_height;
+//                 float current_height = get_height_bilinear(points[i]);
+//                 float diff = glm::abs(target_height-current_height) *1000000.f ;
+//                 bool dir = current_height < target_height;
+//                 points[i] = follow_slope_gradient_set_distance(points[i], diff, dir);
+//             }
+//         }
+
+//         return points;
+//     }
+
+// private:
+//     // this function returns the height value for any x,y given in fractional pixel values
+//     // eg. pixel value of x=1.5f is average height from pixel 1 and pixel 2 together
+//     float get_height_bilinear(float x, float y) {
+//         if (!height_data_loaded) return 0.f;
+//         int x0 = (int)x; int y0 = (int)y;
+//         int x1 = std::min(x0 + 1, hmap_width - 1);
+//         int y1 = std::min(y0 + 1, hmap_height - 1);
+//         float sx = x - (float)x0;
+//         float sy = y - (float)y0;
+//         float h00 = get_raw_height(x0, y0);
+//         float h10 = get_raw_height(x1, y0);
+//         float h01 = get_raw_height(x0, y1);
+//         float h11 = get_raw_height(x1, y1);
+//         float h0 = glm::mix(h00, h10, sx);
+//         float h1 = glm::mix(h01, h11, sx);
+//         return glm::mix(h0, h1, sy);
+//     }
+//     float get_height_bilinear(vec2 p) { return get_height_bilinear(p.x,p.y); }
+
+//     float get_raw_height(int x, int y) {
+//         if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) return 0.0f;
+//         size_t index = (size_t)y * hmap_width + x;
+
+//         if (is_16bit_data) {
+//             // Rzutowanie void* na unsigned short* i odczyt 16-bitowej wartości
+//             unsigned short* data_16bit = static_cast<unsigned short*>(height_data);
+//             unsigned short raw_value = data_16bit[index];
+//             // Normalizacja 16-bitowej wartości (0-65535) do float (0.0-1.0)
+//             return (float)raw_value / 65535.0f; 
+//         } else {
+//             // Rzutowanie void* na unsigned char* i odczyt 8-bitowej wartości
+//             unsigned char* data_8bit = static_cast<unsigned char*>(height_data);
+//             unsigned char raw_value = data_8bit[index];
+//             // Normalizacja 8-bitowej wartości (0-255) do float (0.0-1.0)
+//             return (float)raw_value / 255.0f;
+//         }
+//     }   
+
+//     vec2 follow_slope_gradient_to_target_height(vec2 pos, float target_height) {
+//         const int MAX_ITERATIONS = 8; // Reduced iterations for performance
+//         const float DISTANCE_EPSILON = 0.001f; 
+//         float eps = 1.0f / (float)hmap_width; 
+
+//         for (int i = 0; i < MAX_ITERATIONS; i++) {
+//             float current_h = get_height_at_local_pos(pos.x, pos.y);
+//             float diff = target_height - current_h;
+
+//             if (abs(diff) < DISTANCE_EPSILON) return pos;
+
+//             vec2 gradient = get_gradient_bilinear(pos);
+//             float grad_len_sq = dot(gradient, gradient); // huh?
+
+//             if (grad_len_sq < 0.000001f) break; // Flat terrain
+
+//             // Limit step size to avoid shooting off into infinity on flat slopes
+//             vec2 offset = gradient * (diff / grad_len_sq);
+//             float offset_len = length(offset);
+//             if(offset_len > 0.05f) offset = (offset / offset_len) * 0.05f; // Cap jump size
+
+//             pos += offset;
+//             pos = clamp(pos, -0.5f, 0.5f);
+//         }
+//         return pos;
+//     }
+    
+//     vec2 follow_slope_gradient_set_distance(vec2 origin, float distance, bool upwards) {
+//         const int mini_step_number = 2;
+//         float mini_step_distance = distance / mini_step_number;
+//         vec2 current_pos = origin;
+//         float direction = upwards ? 1.f : (-1.f);
+    
+//         for (int i=0; i<mini_step_number; i++) {
+//             vec2 local_gradient = direction * get_gradient_bilinear(current_pos);
+//             current_pos += glm::normalize(local_gradient) * mini_step_distance;
+//         }
+    
+//         return glm::clamp(current_pos,-0.5f,0.5f);
+//     }
+
+//     vec2 get_gradient_bilinear(float x, float y) {
+//         if (!height_data_loaded) return vec2(0);
+//         int x0 = (int)x; int y0 = (int)y;
+//         int x1 = std::min(x0 + 1, hmap_width - 1);
+//         int y1 = std::min(y0 + 1, hmap_height - 1);
+//         float sx = x - (float)x0;
+//         float sy = y - (float)y0;
+//         vec2 h00 = get_raw_gradient(x0, y0);
+//         vec2 h10 = get_raw_gradient(x1, y0);
+//         vec2 h01 = get_raw_gradient(x0, y1);
+//         vec2 h11 = get_raw_gradient(x1, y1);
+//         vec2 h0 = vec2(glm::mix(h00.x, h10.x, sx),glm::mix(h00.y, h10.y, sx));
+//         vec2 h1 = vec2(glm::mix(h01.x, h11.x, sx),glm::mix(h01.y, h11.y, sx));
+//         return vec2(glm::mix(h0.x, h1.x, sy),glm::mix(h0.y, h1.y, sy));
+//     }
+//     vec2 get_gradient_bilinear(vec2 g) { return get_gradient_bilinear(g.x, g.y); }
+
+//     vec2 get_raw_gradient(int x, int y) {
+//         if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) return vec2(0);
+//         int i = y * hmap_width + x;
+//         return gradient_data[i];
+//     }
+
+//     void load_gradient() {
+
+//         gradient_data.clear();
+//         gradient_data.resize(hmap_width*hmap_height);
+
+//         for (int x=0; x<hmap_width; x++){
+//             for (int y=0; y<hmap_width; y++){
+//                 const int eps = 1;
+//                 float h_x1 = get_raw_height(x + eps, y);
+//                 float h_x2 = get_raw_height(x - eps, y);
+//                 float grad_x = (h_x1 - h_x2) / (2.0f * eps);
+
+//                 float h_y1 = get_raw_height(x, y + eps);
+//                 float h_y2 = get_raw_height(x, y - eps);
+//                 float grad_y = (h_y1 - h_y2) / (2.0f * eps);
+
+//                 int idx = y*hmap_width + x;
+//                 gradient_data[idx] = vec2(grad_x, grad_y);
+//             }
+//         }
+//     }
+// };
+
+// #endif
 
 ======================================================================
 *** FILE: terrain\Heightmap.h ***
@@ -2831,7 +3291,7 @@ public:
 
     Terrain(const TerrainData *terrain_data, World *w, InteractableManager *interactable_manager, Camera *camera, vec3 pos = vec3(0.f)) :
         //terrain_shader(new DEFAULT_WORLD_SHADER),
-        elevation_line_drawer(terrain_data->heightmap_path, terrain_data->vertical_scale),
+        elevation_line_drawer(terrain_data->heightmap_path, terrain_data->vertical_scale, true),
         terrain_data(terrain_data), heightmap_texture(Texture(terrain_data->heightmap_path, true, true))
     {
         // Setup the physical plane object for terrain and floor
@@ -5247,6 +5707,8 @@ public:
     }
 
     void render() override {
+        if (!visible) return;
+        
         if (points.size() < 2) return;
        
         //glDisable(GL_DEPTH_TEST);
@@ -5328,6 +5790,7 @@ public:
     }
 
     void render() override {
+        if (!visible) return;
         if (points.size() < 2) return;
        
         //glDisable(GL_DEPTH_TEST);
