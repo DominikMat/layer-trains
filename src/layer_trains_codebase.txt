@@ -389,9 +389,14 @@ public:
 using namespace glm;
 using namespace std;
 
+enum NodeDestinationType { 
+    NONE=0, OPTIONAL=1, NECESSARY=2
+}
 struct TerrainNode {
     int handle_id;
     vec2 position;
+    int connected_system = 0;
+    NodeDestinationType destination_type = NodeDestinationType::NONE;
     bool intersection = false;
 };
 struct TerrainLinkData {
@@ -413,6 +418,8 @@ protected:
     Terrain *terrain;
     InteractableManager *interactable_manager;
 
+    int node_id = 0, connected_system_number = 0;
+
     /* graph data */
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
@@ -421,16 +428,16 @@ public:
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
     
-    int create_path_handle_at_pos (vec2 local_pos) {
+    int create_path_handle_at_pos (vec2 local_pos, const char* name = "Path Handle") {
         Interactable *i = interactable_manager->create(
-            vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
+            vec3(0.f), name, InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE, node_id
         );
         float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
         float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
         terrain->attach_to_surface(i, uvx, uvy);
         int id = create_new_node(local_pos);
         cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << ", id: " << id << endl;
-        return id;
+        return id; // will increase in create_new_node fn
     } 
 
     void add_link(TerrainLinkData new_link_data) {
@@ -438,12 +445,32 @@ public:
         line->set_parent(terrain->terrain_obj);
         TerrainLink new_link = { new_link_data.start_handle_id, new_link_data.end_handle_id, line };
         links.push_back(new_link);
+
+        // Merging Logic: Propagate the smaller ID to the larger ID group
+        // ???
     }
 
     int create_new_node(vec2 local_pos) {
-        TerrainNode new_node = { (int)nodes.size(), local_pos, false };
+        TerrainNode new_node = { node_id++, local_pos, connected_system_number++ };
         nodes.push_back(new_node);
         return nodes.back().handle_id;
+    }
+
+    int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
+        int id = create_path_handle_at_pos(local_pos, name);
+        nodes.back().destination_type = destination_type;
+    }
+
+    bool are_necessary_destinations_connected() {
+        int current_path_system_id = -1;
+        for (auto x : nodes) {
+            if (x.destination_type == NodeDestinationType::NONE) continue;
+            if (!x->optional) {
+                if (current_path_system_id == -1) current_path_system_id = x.connected_system;
+                else if (x.connected_system != current_path_system_id) return false;
+            }
+        }
+        return true;
     }
 };
 
@@ -1325,8 +1352,8 @@ public:
         // --- config path system ----
         path_system = new TerrainPathSystem(terrain, interactable_manager);
         for (auto i : interactable_manager->get_current_interactables()) {
-            // if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
-            // std::cout << "added destination: " << i->name << std::endl; }
+            if (i->type == InteractionType::PATH_HANDLE) { path_system->create_new_destination(i->name, i->position, NodeDestinationType::NECESSARY);
+            std::cout << "added destination: " << i->name << std::endl; }
         }
 
         // ==========================================================
@@ -3849,10 +3876,12 @@ public:
         camera->set_screen_size(scr_width, scr_height); // update screen size in camera (and shader dependancy)
         camera->set_orthographic_zoom(scr_height); // cast to pixel coordinates 
 
-        for (const auto& object_ptr : objects) {
+        int object_count_on_loop_start = objects.size();
+        for (int i=0; i<object_count_on_loop_start; i++) {
+            auto object_ptr = objects[i];
+
             if (object_ptr->new_child_added) {
                 place(object_ptr); // will recursively place all children, skip already added
-                object_ptr->new_child_added = false;
             }
 
             object_ptr->calculate_transform_matrix();   
@@ -3871,18 +3900,23 @@ public:
             std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
             return;
         }
-        for (auto o : objects) if (o == obj) {
-            std::cout << "OBJECT ALREDY ADDED TO SCREEN UI!" << std::endl;
-            return;
+        bool exists = false;
+        for (auto o : objects) {
+            if (o == obj) { 
+                exists = true; 
+                break; 
+            }
         }
-
-        this->objects.push_back(obj);
-        obj->construct();
-        Shader *new_ui_shader = new SCREEN_UI_SHADER;
-        camera->set_screenspace(new_ui_shader);
-        obj->set_shader(new_ui_shader);
-        obj->set_screenspace();
-        obj->initialize_shader_properties();
+        
+        if (!exists) {
+            this->objects.push_back(obj);
+            obj->construct();
+            Shader *new_ui_shader = new SCREEN_UI_SHADER;
+            camera->set_screenspace(new_ui_shader);
+            obj->set_shader(new_ui_shader);
+            obj->set_screenspace();
+            obj->initialize_shader_properties();
+        }
 
         // detect and add buttons to seperate array
         Button* obj_button = obj->get_button();
@@ -3891,6 +3925,7 @@ public:
         // detect and place buttons to seperate array
         vector<UIObject*> obj_children = obj->get_ui_children();
         for (auto c : obj_children) place(c);
+        obj->new_child_added = false;
     }
 
     void check_button_clicked(InputHandler *ih) {
@@ -3950,11 +3985,11 @@ public:
         text_obj = new UIText(text_str, font_scale, text_colour);
         text_obj->set_ui_parent(this);
         
-        resize_and_reposition();
-
         bg_panel = new Panel(Colour::TRANSPARENT, vec2(0), size);
         bg_panel->set_ui_parent(this);
         bg_panel->set_anchor(UIAnchor::CENTER, vec2(0.f));
+
+        resize_and_reposition();
     }
     
     void set_text(std::string text_str) { 
@@ -4195,15 +4230,8 @@ public:
 
     void add_item(UIObject* item) {
         if (!item) return;
-
         item->set_ui_parent(this);
-        item->set_screenspace();
-        
-        if (this->shader) {
-            item->construct();
-            item->set_shader(this->shader);
-        }
-
+        items.push_back(item);
         recalculate_layout();
     }
 
@@ -4239,6 +4267,10 @@ public:
 
     void construct() override {} // nothing, only children construct
     void render() override {} // nothing only children render
+
+    void resize_and_reposition() override {
+        recalculate_layout();
+    }
 };
 
 #endif
@@ -4442,17 +4474,8 @@ public:
 
     void add_item(UIObject* item) {
         if (!item) return;
-
         item->set_ui_parent(this);
-        item->set_screenspace();
-        
         items.push_back(item);
-
-        if (this->shader) {
-            item->construct();
-            item->set_shader(this->shader);
-        }
-
         recalculate_layout();
     }
 
@@ -4488,6 +4511,10 @@ public:
 
     void construct() override {} // nothing, only children construct
     void render() override {} // nothing only children render
+
+    void resize_and_reposition() override {
+        recalculate_layout();
+    }
 };
 
 #endif
@@ -5038,8 +5065,8 @@ public:
             i->set_size(resize_mult * INTERACTABLE_INTERACT_DISTANCE * INTERACTABLE_RENDER_RADUIS_MUTLIPLIER);
         }
     }
-    Interactable* create(vec3 pos, const char* name, InteractionType interaction_type, float interact_dist) {
-        Interactable* intr = new Interactable(pos, name, interaction_type, interact_dist, interactables.size());
+    Interactable* create(vec3 pos, const char* name, InteractionType interaction_type, float interact_dist, int id = -1) {
+        Interactable* intr = new Interactable(pos, name, interaction_type, interact_dist, id != -1 ? id : interactables.size());
         add(intr);
         return intr;
     }
@@ -5741,15 +5768,17 @@ public:
     World (Camera *camera) : camera(camera) { }
     
     void render(bool world_pos_pass = false) {
-        for (const auto& object_ptr : objects) {
+        int object_count_on_loop_start = objects.size();
+        for (int i=0; i<object_count_on_loop_start; i++) {
+            auto object_ptr = objects[i];
+            
             if (world_pos_pass && !object_ptr->render_to_world_pos) {
                 continue;
             }
             if (object_ptr->new_child_added) {
                 place(object_ptr); // will recursively place all children, skip already added
-                object_ptr->new_child_added = false;
             }
-         
+            
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
             object_ptr->update_transform();
@@ -5764,16 +5793,25 @@ public:
             std::cout << "ATTEMPTED TO ADD NULL OBJECT TO SCREEN UI!" << std::endl;
             return;
         }
-        for (auto o : objects) if (o == obj) return;
+        bool exists = false;
+        for (auto o : objects) {
+            if (o == obj) { 
+                exists = true; 
+                break; 
+            }
+        }
         
-        this->objects.push_back(obj);
-        obj->construct();
-        obj->initialize_shader_properties();
-        camera->set_orthographic(obj->shader);
+        if (!exists) {
+            this->objects.push_back(obj);
+            obj->construct();
+            obj->initialize_shader_properties();
+            camera->set_orthographic(obj->shader);
+        }
 
         // detect and place children of obj
         std::vector<Object*> obj_children = obj->get_children();
         for (auto c : obj_children) place(c);
+        obj->new_child_added = false;
     }
 
     void clear_objects() {

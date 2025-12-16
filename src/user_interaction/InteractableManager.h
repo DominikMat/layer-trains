@@ -38,8 +38,8 @@ public:
             i->set_size(resize_mult * INTERACTABLE_INTERACT_DISTANCE * INTERACTABLE_RENDER_RADUIS_MUTLIPLIER);
         }
     }
-    Interactable* create(vec3 pos, const char* name, InteractionType interaction_type, float interact_dist) {
-        Interactable* intr = new Interactable(pos, name, interaction_type, interact_dist, interactables.size());
+    Interactable* create(vec3 pos, const char* name, InteractionType interaction_type, float interact_dist, int id = -1) {
+        Interactable* intr = new Interactable(pos, name, interaction_type, interact_dist, id != -1 ? id : interactables.size());
         add(intr);
         return intr;
     }

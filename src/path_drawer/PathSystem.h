@@ -13,14 +13,22 @@
 #include "InputHandler.h"
 #include "TerrainLine.h"
 #include "Interactable.h"
+#include "PathSpacialGrid.h"
+#include <set>
 
 using namespace glm;
 using namespace std;
 
+enum NodeDestinationType { 
+    NO_DEST=0, OPTIONAL=1, NECESSARY=2
+};
 struct TerrainNode {
     int handle_id;
     vec2 position;
+    int connected_system = 0;
+    NodeDestinationType destination_type = NodeDestinationType::NO_DEST;
     bool intersection = false;
+    bool optional = false;
 };
 struct TerrainLinkData {
     int start_handle_id;
@@ -29,6 +37,7 @@ struct TerrainLinkData {
     std::vector<vec2> points;
 };
 struct TerrainLink {
+    int link_id;
     int start_handle_id;
     int end_handle_id;
 
@@ -40,8 +49,13 @@ class TerrainPathSystem
 protected:
     Terrain *terrain;
     InteractableManager *interactable_manager;
+    PathSpatialGrid spatial_grid;
 
+    int node_id = 0, connected_system_number = 0;
+    int link_number = 0;
+    
     /* graph data */
+    std::unordered_map<int, std::vector<int>> adjacency_list;
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
 
@@ -49,34 +63,182 @@ public:
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
     
-    int create_path_handle_at_pos (vec2 local_pos) {
+    int create_path_handle_at_pos (vec2 local_pos, const char* name = "Path Handle") {
         Interactable *i = interactable_manager->create(
-            vec3(0.f), "Path Handle", InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE
+            vec3(0.f), name, InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE, node_id
         );
         float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
         float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
         terrain->attach_to_surface(i, uvx, uvy);
         int id = create_new_node(local_pos);
         cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << ", id: " << id << endl;
-        return id;
+        return id; // will increase in create_new_node fn
     } 
 
     void add_link(TerrainLinkData new_link_data) {
         TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
         line->set_parent(terrain->terrain_obj);
-        TerrainLink new_link = { new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+        TerrainLink new_link = { link_number++, new_link_data.start_handle_id, new_link_data.end_handle_id, line };
         links.push_back(new_link);
+
+        // Merging Logic: Propagate the smaller ID to the larger ID group
+        // ???
+
+        spatial_grid.register_path_segment(new_link.link_id, new_link_data.points);
     }
 
+    void remove_link(int id) {
+        for (auto l:links) {
+            if (l.link_id == id) {
+                l.line_obj->set_visible(false);
+                spatial_grid.unregister_path_segment(id);
+                return;
+            }
+        }
+    }
+
+
     int create_new_node(vec2 local_pos) {
-        TerrainNode new_node = { (int)nodes.size(), local_pos, false };
+        TerrainNode new_node = { node_id++, local_pos, connected_system_number++ };
         nodes.push_back(new_node);
         return nodes.back().handle_id;
     }
+
+    int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
+        int id = create_path_handle_at_pos(local_pos, name);
+        nodes.back().destination_type = destination_type;
+        return id;
+    }
+
+    // bool are_necessary_destinations_connected() {
+    //     int current_path_system_id = -1;
+    //     for (auto x : nodes) {
+    //         if (x.destination_type == NodeDestinationType::NO_DEST) continue;
+    //         if (!x.optional) {
+    //             if (current_path_system_id == -1) current_path_system_id = x.connected_system;
+    //             else if (x.connected_system != current_path_system_id) return false;
+    //         }
+    //     }
+    //     return true;
+    // }
+
+    int get_link_at_pos(vec2 pos, float radius, vec2& out_closest_point) {
+        return spatial_grid.get_link_at_pos(pos, radius, out_closest_point);
+    }
+
 };
 
 #endif
 
+// ===================================================================================================================================
+
+// #ifndef PATHSYSTEM_H
+// #define PATHSYSTEM_H
+
+// #include <glad/glad.h>
+// #include <GLFW/glfw3.h>
+// #include <glm/glm.hpp>
+// #include <vector>
+// #include <queue>
+// #include <unordered_map>
+// #include <limits>
+// #include <algorithm>
+// #include "Terrain.h"
+// #include "InputHandler.h"
+// #include "TerrainLine.h"
+// #include "Interactable.h"
+
+// using namespace glm;
+// using namespace std;
+
+// enum NodeDestinationType { 
+//     NONE=0, OPTIONAL=1, NECESSARY=2
+// }
+// struct TerrainNode {
+//     int handle_id;
+//     vec2 position;
+//     int connected_system = 0;
+//     NodeDestinationType destination_type = NodeDestinationType::NONE;
+//     bool intersection = false;
+// };
+// struct TerrainLinkData {
+//     int start_handle_id;
+//     int end_handle_id;
+
+//     std::vector<vec2> points;
+// };
+// struct TerrainLink {
+//     int start_handle_id;
+//     int end_handle_id;
+
+//     TerrainLine *line_obj;
+// };
+
+// class TerrainPathSystem 
+// {
+// protected:
+//     Terrain *terrain;
+//     InteractableManager *interactable_manager;
+
+//     int node_id = 0, connected_system_number = 0;
+
+//     /* graph data */
+//     vector<TerrainNode> nodes;
+//     vector<TerrainLink> links;
+
+// public:
+//     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
+
+    
+//     int create_path_handle_at_pos (vec2 local_pos, const char* name = "Path Handle") {
+//         Interactable *i = interactable_manager->create(
+//             vec3(0.f), name, InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE, node_id
+//         );
+//         float uvx = (local_pos.x+0.5f); // local -0.5 to 0.5, uv is 0-1
+//         float uvy = (local_pos.y+0.5f); // local -0.5 to 0.5, uv is 0-1
+//         terrain->attach_to_surface(i, uvx, uvy);
+//         int id = create_new_node(local_pos);
+//         cout << "Path handle created, attached to surface at: " << uvx << ", " << uvy << ", id: " << id << endl;
+//         return id; // will increase in create_new_node fn
+//     } 
+
+//     void add_link(TerrainLinkData new_link_data) {
+//         TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
+//         line->set_parent(terrain->terrain_obj);
+//         TerrainLink new_link = { new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+//         links.push_back(new_link);
+
+//         // Merging Logic: Propagate the smaller ID to the larger ID group
+//         // ???
+//     }
+
+//     int create_new_node(vec2 local_pos) {
+//         TerrainNode new_node = { node_id++, local_pos, connected_system_number++ };
+//         nodes.push_back(new_node);
+//         return nodes.back().handle_id;
+//     }
+
+//     int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
+//         int id = create_path_handle_at_pos(local_pos, name);
+//         nodes.back().destination_type = destination_type;
+//     }
+
+//     bool are_necessary_destinations_connected() {
+//         int current_path_system_id = -1;
+//         for (auto x : nodes) {
+//             if (x.destination_type == NodeDestinationType::NONE) continue;
+//             if (!x->optional) {
+//                 if (current_path_system_id == -1) current_path_system_id = x.connected_system;
+//                 else if (x.connected_system != current_path_system_id) return false;
+//             }
+//         }
+//         return true;
+//     }
+// };
+
+// #endif
+
+// ===================================================================================================================================
 // #ifndef PATHSYSTEM_H
 // #define PATHSYSTEM_H
 

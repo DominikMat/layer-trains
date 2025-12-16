@@ -22,8 +22,9 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        CLICK_MENU_CREATE_PATH_HANDLE = 10, CLICK_MENU_CREATE_BRIDGE = 11, CLICK_MENU_CREATE_TUNNEL = 12,  CLICK_MENU_DRAG_PATH = 13, CLICK_MENU_DELETE_PATH = 14, 
-        TOOL_BRIDGE=20,TOOL_TUNNEL=21,TOOL_RAIL=22,TOOL_ROAD=23
+        TOOL_BRIDGE,TOOL_TUNNEL,TOOL_RAIL,TOOL_ROAD,
+        BUTTON_CREATE_PATH_HANDLE, BUTTON_CREATE_BRIDGE, BUTTON_CREATE_TUNNEL, 
+        BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
     };
     
     InteractableManager *interactable_manager;
@@ -36,12 +37,14 @@ private:
     float last_scroll_value = 1.f;
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
+    int click_menu_link_id_selected = 0;
 
     TerrainPathSystem *path_system;
     TextPanel *slope_display;
     Interactable *test_interact;
 
-    UIList *click_menu;
+    UIList *terrain_click_menu;
+    UIList *path_click_menu;
     UIRow *toolbar_row;
     vec3 reference_pos_terrain_local;
 
@@ -79,8 +82,8 @@ public:
         // --- config path system ----
         path_system = new TerrainPathSystem(terrain, interactable_manager);
         for (auto i : interactable_manager->get_current_interactables()) {
-            // if (i->type == InteractionType::PATH_HANDLE) { path_system->create_destination(i, false);
-            // std::cout << "added destination: " << i->name << std::endl; }
+            if (i->type == InteractionType::PATH_HANDLE) { path_system->create_new_destination(i->name, i->position, NodeDestinationType::NECESSARY);
+            std::cout << "added destination: " << i->name << std::endl; }
         }
 
         // ==========================================================
@@ -115,10 +118,26 @@ public:
         slope_display->set_visible(display_slope_info);
     
         /* click menu logic */
-        if ((user_input->is_right_mouse_double_clicked() || user_input->is_left_mouse_double_clicked()) && !click_menu->visible) {
-            click_menu_change_visible(true, mouse_pos_world, mouse_terrain_local_pos);
-        } else if ((user_input->is_left_mouse_pressed_down() || user_input->is_right_mouse_pressed_down()) && click_menu->visible) {
-            if (!click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) click_menu_change_visible(false);
+        if ((user_input->is_right_mouse_double_clicked() || user_input->is_left_mouse_double_clicked())) {
+            vec2 path_closest_point;
+            int link_id = path_system->get_link_at_pos(mouse_terrain_local_pos, CURSOR_OUTER_RADIUS, path_closest_point);
+            if (!path_click_menu->visible && link_id != -1){
+                float local_height = terrain->elevation_line_drawer.get_height_at_local_pos(path_closest_point.x,path_closest_point.y);
+                vec4 path_world_pos = terrain->terrain_obj->get_transform() * vec4(path_closest_point, local_height, 1.f);
+                click_menu_link_id_selected = link_id;
+                click_menu_change_visible(path_click_menu, true, vec3(path_world_pos), vec3(path_closest_point,local_height));
+            }
+            else if (!terrain_click_menu->visible) {
+                click_menu_change_visible(terrain_click_menu, true, mouse_pos_world, mouse_terrain_local_pos);
+            }
+        } 
+        else if (user_input->is_left_mouse_pressed_down() || user_input->is_right_mouse_pressed_down()) {
+            if (terrain_click_menu->visible && !terrain_click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) {
+                click_menu_change_visible(terrain_click_menu, false);
+            }
+            if (path_click_menu->visible && !path_click_menu->is_mouse_over(user_input->get_mouse_position_pixels_inv_y())) {
+                click_menu_change_visible(path_click_menu, false);
+            }
         }
     }
 
@@ -160,10 +179,22 @@ public:
                 current_path_draw_mode = (int)id; 
                 break;
 
-            case ButtonID::CLICK_MENU_CREATE_PATH_HANDLE:
+            /* TERRAIN CLICK MENU */
+            case ButtonID::BUTTON_CREATE_PATH_HANDLE:
                 path_system->create_path_handle_at_pos(reference_pos_terrain_local);
-                click_menu_change_visible(false);
+                click_menu_change_visible(terrain_click_menu, false);
                 break;
+
+            /* PATH CLICK MENU */
+            case ButtonID::BUTTON_CREATE_INTERSECTION:
+                path_system->create_path_handle_at_pos(reference_pos_terrain_local);
+                click_menu_change_visible(path_click_menu, false);
+                break;
+            case ButtonID::BUTTON_DELETE_PATH:
+                path_system->remove_link(click_menu_link_id_selected);
+                click_menu_change_visible(path_click_menu, false);
+                break;
+            
         }
         terrain_path_drawer[current_path_draw_mode]->reset(); 
 
@@ -223,19 +254,25 @@ private:
         toolbar_row->add_item(toolbar_right);
         screen_ui->place(toolbar_row);
 
-        /* click menu */
-        click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        /* click menu(s) */
         const float click_menu_font_size = 0.3f;
-        click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_PATH_HANDLE, false) );
-        click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_BRIDGE, false) );
-        click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_CREATE_TUNNEL, false) );
-        click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DRAG_PATH, false) );
-        click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::CLICK_MENU_DELETE_PATH, false) );
-        click_menu->set_visible(false);
-        screen_ui->place( click_menu );
+
+        terrain_click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        terrain_click_menu->add_item( new TextButton("create path handle", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_PATH_HANDLE, false) );
+        terrain_click_menu->add_item( new TextButton("create tunnel", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_BRIDGE, false) );
+        terrain_click_menu->add_item( new TextButton("create bridge", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_TUNNEL, false) );
+        terrain_click_menu->set_visible(false);
+        screen_ui->place( terrain_click_menu );
+
+        path_click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        path_click_menu->add_item( new TextButton("create intersection", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_INTERSECTION, false) );
+        path_click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DRAG_PATH, false) );
+        path_click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DELETE_PATH, false) );
+        path_click_menu->set_visible(false);
+        screen_ui->place( path_click_menu );
     }
 
-    void click_menu_change_visible(bool state, vec3 mouse_world=vec3(0), vec3 mouse_local=vec3(0)) {
+    void click_menu_change_visible(UIList *click_menu, bool state, vec3 mouse_world=vec3(0), vec3 mouse_local=vec3(0)) {
         // enable
         if (state){
             vec2 mouse_pos_px = user_input->get_mouse_position_pixels(); mouse_pos_px.y *= -1;
