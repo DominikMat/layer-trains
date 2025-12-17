@@ -42,7 +42,7 @@ public:
         shader->setFloat("heightmap_resolution_y", td->resolution_y);
         shader->setFloat("heightmap_scale", td->vertical_scale);
         shader->setBool("heightmap_enabled", true);
-        shader->setVec3("terrain_boundary_colour", Colour::TERRAIN_SIDE_COLOUR);
+        shader->setVec3("terrain_boundary_colour", Colour::TERRAIN_SIDE);
         shader->setInt("terrain_boundrary_pixel_width", TERRAIN_BOUNDARY_PIXEL_NUM);
         //shader->addTexture(new Texture(td->heightmap_path)); shader->setInt("heightmap",shader->get_last_loaded_tex_slot());
         shader->addTexture(new Texture(td->areas_data_path)); shader->setInt("terrain_area_data",shader->get_last_loaded_tex_slot());
@@ -69,7 +69,7 @@ public:
         shader->setFloat("snow_level_height", td->snow_level_height);
         shader->setFloat("snow_falloff_range", SNOW_FALLOFF_RANGE);
         shader->setFloat("snow_max_steepness", SNOW_MAX_STEEPNESS);
-        shader->setVec4("snow_colour", Colour::SNOW_COLOUR);
+        shader->setVec4("snow_colour", Colour::SNOW);
     }
 };
 

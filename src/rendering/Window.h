@@ -19,7 +19,6 @@
 #include "user_interaction/InputHandler.h"
 #include "textures/Texture.h"
 #include "Terrain.h"
-#include "world_objects/Line.h"
 #include "Panel.h"
 #include "Sphere.h"
 #include "Interactable.h"

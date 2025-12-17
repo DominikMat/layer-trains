@@ -24,14 +24,19 @@ public:
     int start_draw_handle;
 
     Terrain *terrain;
-    TerrainLine *current_line;
+    Line2D *current_line;
 
     TerrainPathDrawer (Terrain *terrain, float slope, float max_slope = 0.15f, bool debug_msg = false) 
         : terrain(terrain), debug_msg(debug_msg), slope(slope), max_slope(max_slope) {
         
-        current_line = new TerrainLine(terrain->terrain_data);
-        current_line->set_parent(terrain->terrain_obj);
+        current_line = create_line_obj();
     }   
+    
+    virtual Line2D* create_line_obj () {
+        Line2D* new_line = new TerrainLine(terrain->terrain_data); 
+        new_line->set_parent(terrain->terrain_obj);
+        return new_line;
+    }
 
     virtual void update_path (InputHandler *input_handler) {
         /* track scroll value */
@@ -56,6 +61,8 @@ public:
     
     virtual bool start_drawing_at_pos (vec3 local_pos, int handle_id) {
         if (abs(local_pos.x) > 0.5f || abs(local_pos.y) > 0.5f) return false;
+
+        if (drawing_path) reset_drawing();
         
         start_draw_handle = handle_id;
         drawing_path = true;
@@ -70,20 +77,26 @@ public:
         drawing_path = false;
         recalculate_path(current_line, origin_point, local_pos, slope);
 
-        if (debug_msg) std::cout << (current_line->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
+        if (current_line->get_points().size() < 2) {
+            std::cout << "Created path is empty" << std::endl;
+            return false;
+        }
+        
+        if (debug_msg) std::cout << "Path set." << std::endl;
         return true;
     }
-    TerrainLinkData create_terrain_link(int end_handle_id) {
-        TerrainLinkData new_link = {
-            start_draw_handle, end_handle_id, current_line->get_points()
+    TerrainLink create_terrain_link(int end_handle_id) {
+
+        TerrainLink new_link = {
+            start_draw_handle, end_handle_id, current_line
         };
-        current_line->clear_points();
+        current_line = create_line_obj(); // we return the current line, create new one
         return new_link;
     }
 
     virtual void recalculate_path(Line2D* line, vec2 start, vec2 end, float slope_value=0.f) = 0;
 
-    void reset() { current_line->clear_points(); drawing_path = false; }
+    void reset_drawing() { current_line->clear_points(); drawing_path = false; }
     void clear_path() { current_line->clear_points(); }
     bool is_drawing_path() { return drawing_path; }
     vec2 get_end_point() { return current_line->get_last_point(); }
@@ -92,7 +105,7 @@ public:
     float get_slope() { return slope; }
     float get_max_slope() { return max_slope; }
 
-    ~TerrainPathDrawer() { clear_path();  }
+    ~TerrainPathDrawer() { clear_path(); delete current_line; }
 };
 
 #endif

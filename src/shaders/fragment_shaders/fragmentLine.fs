@@ -6,7 +6,7 @@ in float line_steepness;
 // uniform sampler2D heightmap;
 uniform float max_steepness_value;
 
-uniform vec3 line_colour;
+uniform vec4 line_colour;
 uniform vec3 max_steepness_colour;
 uniform vec3 min_steepness_colour;
 uniform bool show_steepness;
@@ -18,7 +18,7 @@ void main()
     if (show_steepness) {
         float steepness_t = clamp(abs(line_steepness)/max_steepness_value, 0.0, 1.0);
         vec3 steepness_colour = mix(min_steepness_colour, max_steepness_colour, steepness_t);
-        FragColor = vec4(steepness_colour, 1.0 );
+        FragColor = vec4(steepness_colour, line_colour.a );
     } 
-    else FragColor = vec4(line_colour, 1.0);
+    else FragColor = line_colour;
 }

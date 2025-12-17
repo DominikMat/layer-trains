@@ -8,6 +8,7 @@
 // Wartości są w zakresie [0.0, 1.0].
 namespace Colour {
     using glm::vec4;
+    using glm::vec3;
 
     // --- Podstawowe kolory ---
     const vec4 WHITE      = vec4(1.0f, 1.0f, 1.0f, 1.0f); // Biały
@@ -36,9 +37,11 @@ namespace Colour {
     const vec4 DARK_BROWN = vec4(46/255.f, 26/255.f, 0, 1.f); // Dark brown 'rgba(46, 26, 0, 1)'
     
     // --- Palette ---
-    const vec4 TERRAIN_SIDE_COLOUR = vec4(43/255.f, 37/255.f, 29/255.f, 1.f); // greyish brown 'rgba(43, 37, 29, 1)'
-    const vec4 SNOW_COLOUR = vec4(1.f,1.f,1.f,0.75f); // greyish brown 'rgba(180, 180, 180, 1)'
+    const vec4 TERRAIN_SIDE = vec4(43/255.f, 37/255.f, 29/255.f, 1.f); // greyish brown 'rgba(43, 37, 29, 1)'
+    const vec4 SNOW = vec4(1.f,1.f,1.f,0.75f); // greyish brown 'rgba(180, 180, 180, 1)'
     const vec4 DEFAULT_RENDER_BACKGROUND = vec4(132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f);
+    const vec4 TUNNEL = vec4(vec3(Colour::GREY), 0.67f);
+    const vec4 BRIDGE = Colour::RED;
 }
 
 #endif // COLOURDATA_H

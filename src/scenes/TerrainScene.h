@@ -10,6 +10,8 @@
 #include "AutoSlopePathDrawer.h"
 #include "PathSystem.h"
 #include "StraightPathDrawer.h"
+#include "TunnelPathDrawer.h"
+#include "BridgePathDrawer.h"
 #include "ToolbarPanel.h"
 #include "TextPanel.h"
 #include "UIRow.h"
@@ -22,7 +24,7 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        TOOL_BRIDGE,TOOL_TUNNEL,TOOL_RAIL,TOOL_ROAD,
+        MODE_BRIDGE,MODE_TUNNEL,MODE_RAIL,MODE_ROAD,
         BUTTON_CREATE_PATH_HANDLE, BUTTON_CREATE_BRIDGE, BUTTON_CREATE_TUNNEL, 
         BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
     };
@@ -32,9 +34,9 @@ private:
     Terrain *terrain;   
     Plane *terrain_obj;
     const TerrainData *terrain_data;
-    TerrainPathDrawer *terrain_path_drawer[3];
+    std::unordered_map<int,TerrainPathDrawer*> terrain_path_drawer;
     
-    float last_scroll_value = 1.f;
+    float last_scroll_value = 1.f, post_click_timer = 1.f;
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
     int click_menu_link_id_selected = 0;
@@ -78,6 +80,8 @@ public:
         terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, true);
         terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, 1.f, true);
         terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, 0.25f, true);
+        terrain_path_drawer[ButtonID::MODE_TUNNEL] = new TunnelPathDrawer(terrain, true);
+        terrain_path_drawer[ButtonID::MODE_BRIDGE] = new BridgePathDrawer(terrain, true);
 
         // --- config path system ----
         path_system = new TerrainPathSystem(terrain, interactable_manager);
@@ -141,6 +145,14 @@ public:
                 click_menu_change_visible(path_click_menu, false);
             }
         }
+
+        // reset line drwwaing on right click
+        if (curr_path_drawer->is_drawing_path() && user_input->is_right_mouse_pressed_up()) {
+            curr_path_drawer->reset_drawing();
+        }
+
+        /* timer step */
+        post_click_timer += dt;
     }
 
     Shader* get_world_pos_buffer_shader() override {
@@ -150,7 +162,7 @@ public:
     void interact_callback (Interactable *interactable) {
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
-                if (!curr_path_drawer->is_drawing_path()) {
+                if (!curr_path_drawer->is_drawing_path() && post_click_timer > 0.15f) {
                     if (curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id())){
                         interactable->disable();
                     }
@@ -180,14 +192,30 @@ public:
             case ButtonID::MODE_STRAIGHT_PATH:
             case ButtonID::MODE_AUTO_SLOPE:
             case ButtonID::MODE_ISO_PATH:
+            case ButtonID::MODE_BRIDGE:
+            case ButtonID::MODE_TUNNEL:
                 current_path_draw_mode = (int)id; 
                 break;
-
+                
             /* TERRAIN CLICK MENU */
             case ButtonID::BUTTON_CREATE_PATH_HANDLE:
                 path_system->create_path_handle_at_pos(reference_pos_terrain_local);
                 click_menu_change_visible(terrain_click_menu, false);
                 break;
+            case ButtonID::BUTTON_CREATE_TUNNEL: {
+                current_path_draw_mode = ButtonID::MODE_TUNNEL;
+                int new_handle = path_system->create_path_handle_at_pos(reference_pos_terrain_local);
+                curr_path_drawer->start_drawing_at_pos(reference_pos_terrain_local, new_handle);
+                click_menu_change_visible(terrain_click_menu, false);
+                break;
+            }
+            case ButtonID::BUTTON_CREATE_BRIDGE: {
+                current_path_draw_mode = ButtonID::MODE_BRIDGE; 
+                int new_handle = path_system->create_path_handle_at_pos(reference_pos_terrain_local);
+                curr_path_drawer->start_drawing_at_pos(reference_pos_terrain_local, new_handle);
+                click_menu_change_visible(terrain_click_menu, false);
+                break;
+            }
 
             /* PATH CLICK MENU */
             case ButtonID::BUTTON_CREATE_INTERSECTION:
@@ -200,7 +228,8 @@ public:
                 break;
             
         }
-        terrain_path_drawer[current_path_draw_mode]->reset(); 
+        terrain_path_drawer[current_path_draw_mode]->reset_drawing(); 
+        post_click_timer = 0.f;
 
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << clicked << std::endl;
     }
@@ -242,8 +271,8 @@ private:
         std::string icon_filepath = TEXTURE_ICON_FILE_PATH;
 
         ToolbarPanel* toolbar_left = new ToolbarPanel(button_gap, toolbar_bg, button_size); 
-        toolbar_left->add_button(ButtonID::TOOL_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
-        toolbar_left->add_button(ButtonID::TOOL_TUNNEL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/tunnel_tool.png").c_str()));
+        toolbar_left->add_button(ButtonID::MODE_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
+        toolbar_left->add_button(ButtonID::MODE_TUNNEL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/tunnel_tool.png").c_str()));
         toolbar_row->add_item(toolbar_left);
         ToolbarPanel* path_toolbar = new ToolbarPanel(button_gap, toolbar_bg, button_size);
         path_toolbar->add_button(ButtonID::MODE_STRAIGHT_PATH, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/straight_tool.png").c_str()));
@@ -251,8 +280,8 @@ private:
         path_toolbar->add_button(ButtonID::MODE_ISO_PATH, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/match_slope_tool.png").c_str()));
         toolbar_row->add_item(path_toolbar);
         ToolbarPanel* toolbar_right = new ToolbarPanel(button_gap, toolbar_bg, button_size);
-        toolbar_right->add_button(ButtonID::TOOL_ROAD, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/road_tool.png").c_str()));
-        toolbar_right->add_button(ButtonID::TOOL_RAIL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/rail_tool.png").c_str()));
+        toolbar_right->add_button(ButtonID::MODE_ROAD, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/road_tool.png").c_str()));
+        toolbar_right->add_button(ButtonID::MODE_RAIL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/rail_tool.png").c_str()));
         toolbar_row->add_item(toolbar_right);
         screen_ui->place(toolbar_row);
 

@@ -6,7 +6,6 @@
 #include "textures/Texture.h"
 #include "settings/Settings.h"
 #include "Heightmap.h" 
-#include "world_objects/Line.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -76,6 +75,7 @@ public:
         if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
         return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
     }
+    float get_height_at_local_pos(vec2 p) { return get_height_at_local_pos(p.x,p.y); }
     
     glm::vec3 get_local_pos_from_uv(float u, float v) {
         u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);

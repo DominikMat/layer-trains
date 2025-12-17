@@ -20,7 +20,7 @@ public:
         Shader *shader = new TERRAIN_LINE_SHADER;
         shader->use();
 
-        shader->setVec3("line_colour", PATH_COLOUR );
+        shader->setVec4("line_colour", PATH_COLOUR );
         shader->setVec3("max_steepness_colour", Colour::RED );
         shader->setVec3("min_steepness_colour", Colour::BLUE );
         shader->setBool("show_steepness", true);

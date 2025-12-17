@@ -30,18 +30,11 @@ struct TerrainNode {
     bool intersection = false;
     bool optional = false;
 };
-struct TerrainLinkData {
-    int start_handle_id;
-    int end_handle_id;
-
-    std::vector<vec2> points;
-};
 struct TerrainLink {
-    int link_id;
     int start_handle_id;
     int end_handle_id;
-
-    TerrainLine *line_obj;
+    Line2D *line_obj;
+    int link_id = -1;
 };
 
 class TerrainPathSystem 
@@ -75,16 +68,14 @@ public:
         return id; // will increase in create_new_node fn
     } 
 
-    void add_link(TerrainLinkData new_link_data) {
-        TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
-        line->set_parent(terrain->terrain_obj);
-        TerrainLink new_link = { link_number++, new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+    void add_link(TerrainLink new_link) {
+        new_link.link_id = link_number++;
         links.push_back(new_link);
 
         // Merging Logic: Propagate the smaller ID to the larger ID group
         // ???
 
-        spatial_grid.register_path_segment(new_link.link_id, new_link_data.points);
+        spatial_grid.register_path_segment(new_link.link_id, new_link.line_obj->get_points());
     }
 
     void remove_link(int id) {

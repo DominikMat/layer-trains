@@ -93,9 +93,9 @@ public:
                 /* COLOUR TERRAIN BOUNDARY  */
 
                 if (y < TERRAIN_BOUNDARY_PIXEL_NUM || x < TERRAIN_BOUNDARY_PIXEL_NUM || x >= width-TERRAIN_BOUNDARY_PIXEL_NUM || y >= height-TERRAIN_BOUNDARY_PIXEL_NUM) {
-                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.r * 255.f);
-                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.g * 255.f);
-                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.b * 255.f);
+                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE.r * 255.f);
+                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE.g * 255.f);
+                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE.b * 255.f);
                     continue;
                 }
 
@@ -143,7 +143,7 @@ public:
                     if (steepness * STEEPNESS_SCALE < allowed_steepness) {
                         float snow_transition = glm::clamp(height_above / 50.0f, 0.0f, 1.0f); // Smooth transition at the very bottom edge of snow line
                         float snow_opacity = snow_transition; //glm::clamp(snow_transition, 0.f, 1.f);
-                        final_colour = glm::mix(final_colour, vec3(Colour::SNOW_COLOUR), snow_opacity*Colour::SNOW_COLOUR.a);
+                        final_colour = glm::mix(final_colour, vec3(Colour::SNOW), snow_opacity*Colour::SNOW.a);
                     }
                 }
                 
