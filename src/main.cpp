@@ -69,7 +69,7 @@ int main() {
             /* Render to world position buffer texture */      
             if (prev_window_size != window_size) world_pos_buffer_shader->resize_worldpos_buffer(window_size.x, window_size.y);
             if (world_pos_buffer_shader){
-                glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->worldPosFBO);
+                glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->get_world_framebuffer());
                 window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
                 world_pos_buffer_shader->render_to_world_pos_buffer();
                 world.render(true);

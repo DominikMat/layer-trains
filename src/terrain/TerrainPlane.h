@@ -44,8 +44,8 @@ public:
         shader->setBool("heightmap_enabled", true);
         shader->setVec3("terrain_boundary_colour", Colour::TERRAIN_SIDE);
         shader->setInt("terrain_boundrary_pixel_width", TERRAIN_BOUNDARY_PIXEL_NUM);
-        //shader->addTexture(new Texture(td->heightmap_path)); shader->setInt("heightmap",shader->get_last_loaded_tex_slot());
-        shader->addTexture(new Texture(td->areas_data_path)); shader->setInt("terrain_area_data",shader->get_last_loaded_tex_slot());
+        shader->setTexture("heightmap",new Texture(td->heightmap_path, true, true));
+        shader->setTexture("terrain_area_data", new Texture(td->areas_data_path));
 
         // --- Terrain contour lines ---
         shader->setFloat("iso_line_spacing", ISO_LINE_SPACING);
@@ -53,9 +53,9 @@ public:
         shader->setVec4("iso_line_colour", CONTOUR_LINE_COLOUR);
 
         // --- Terrain colour pallete ---
-        shader->addTexture(new GRADIENT_ELEVATION); shader->setInt("elevation_gradient",shader->get_last_loaded_tex_slot());
-        shader->addTexture(new GRADIENT_STEEPNESS); shader->setInt("steepness_gradient", shader->get_last_loaded_tex_slot());
-        shader->addTexture(new GRADIENT_WATER); shader->setInt("water_gradient", shader->get_last_loaded_tex_slot());
+        shader->setTexture("elevation_gradient", new GRADIENT_ELEVATION);
+        shader->setTexture("steepness_gradient", new GRADIENT_STEEPNESS);
+        shader->setTexture("water_gradient", new GRADIENT_WATER);
         shader->setFloat("elevation_gradient_max_height", ELEVATION_GRADIENT_MAX_HEIGHT);
         shader->setFloat("elevation_gradient_strength", ELEVATION_GRADIENT_STRENGTH);
         shader->setFloat("steepness_scale", STEEPNESS_SCALE);
@@ -70,6 +70,10 @@ public:
         shader->setFloat("snow_falloff_range", SNOW_FALLOFF_RANGE);
         shader->setFloat("snow_max_steepness", SNOW_MAX_STEEPNESS);
         shader->setVec4("snow_colour", Colour::SNOW);
+
+        // --- Terrain road map params ---
+        shader->setTexture("built_path_mask", new TEXTURE_EMPTY);
+        shader->setVec3("path_colour", Colour::ROAD);
     }
 };
 

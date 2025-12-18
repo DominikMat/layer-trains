@@ -26,7 +26,7 @@ private:
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
         MODE_BRIDGE,MODE_TUNNEL,MODE_RAIL,MODE_ROAD,
         BUTTON_CREATE_PATH_HANDLE, BUTTON_CREATE_BRIDGE, BUTTON_CREATE_TUNNEL, 
-        BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
+        BUTTON_BUILD, BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
     };
     
     InteractableManager *interactable_manager;
@@ -218,6 +218,11 @@ public:
             }
 
             /* PATH CLICK MENU */
+            case ButtonID::BUTTON_BUILD:
+                path_system->build_path(click_menu_link_id_selected);
+                path_system->set_built_path_mask(terrain->terrain_shader);
+                click_menu_change_visible(path_click_menu, false);
+                break;
             case ButtonID::BUTTON_CREATE_INTERSECTION:
                 path_system->create_path_handle_at_pos(reference_pos_terrain_local);
                 click_menu_change_visible(path_click_menu, false);
@@ -296,6 +301,7 @@ private:
         screen_ui->place( terrain_click_menu );
 
         path_click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        path_click_menu->add_item( new TextButton("BUILD PATH", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_BUILD, false) );
         path_click_menu->add_item( new TextButton("create intersection", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_INTERSECTION, false) );
         path_click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DRAG_PATH, false) );
         path_click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DELETE_PATH, false) );

@@ -22,9 +22,9 @@
 
 class Shader
 {
-public:
+    struct TextureChannel { int slot; Texture* tex; };
     unsigned int ID;
-    std::vector<Texture*> textures;
+    std::unordered_map<std::string,TextureChannel> textures;
     bool heightmap_enabled;
     bool uses_texture = false;
     bool has_worldpos_buffer = false;
@@ -33,6 +33,8 @@ public:
     GLuint worldPosFBO;          
     GLuint worldPosTexture;      
     GLuint worldPosDepthRBO;    
+
+public:
 
     // Konstruktor teraz przyjmuje opcjonalny 3. argument
     // ------------------------------------------------------------------------
@@ -137,7 +139,7 @@ public:
     void use() 
     { 
         glUseProgram(ID); 
-        for (int i=0; i<textures.size(); i++) textures[i]->use(i);
+        for (auto t : textures) t.second.tex->use(t.second.slot);
     }
 
     void setBool(const std::string &name, bool value) const
@@ -168,16 +170,24 @@ public:
         unsigned int loc = glGetUniformLocation(ID, name.c_str());
         glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(matrix));
     }
-    void addTexture(Texture* new_tex){
+    void setTexture(std::string name, Texture* new_tex){
         if (textures.size() >= MAX_TEXTURE_SLOTS) {
             std::cout<< "Max number of textures loaded reached!" << std::endl;
             return;
         } 
+
         uses_texture = true;
-        textures.push_back(new_tex);
-    }
-    int get_last_loaded_tex_slot() {
-        return textures.size()-1;
+
+        if (textures.count(name) == 0) { // add new tex
+            TextureChannel new_tex_channel = { (int)textures.size(), new_tex };
+            textures[name] = new_tex_channel;
+            use();
+            setInt(name, new_tex_channel.slot);
+        } 
+        else { // modify existing (keep same slot)
+            textures[name].tex = new_tex;
+        }
+
     }
     
     void config_worldpos_buffer() {
@@ -256,6 +266,9 @@ public:
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, worldPosDepthRBO);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    GLuint get_world_framebuffer() {
+        return worldPosFBO;
     }
         
 private:

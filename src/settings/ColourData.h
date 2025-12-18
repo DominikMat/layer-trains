@@ -42,6 +42,7 @@ namespace Colour {
     const vec4 DEFAULT_RENDER_BACKGROUND = vec4(132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f);
     const vec4 TUNNEL = vec4(vec3(Colour::GREY), 0.67f);
     const vec4 BRIDGE = Colour::RED;
+    const vec4 ROAD = Colour::BLACK;
 }
 
 #endif // COLOURDATA_H

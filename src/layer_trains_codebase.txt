@@ -73,7 +73,7 @@ int main() {
             /* Render to world position buffer texture */      
             if (prev_window_size != window_size) world_pos_buffer_shader->resize_worldpos_buffer(window_size.x, window_size.y);
             if (world_pos_buffer_shader){
-                glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->worldPosFBO);
+                glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->get_world_framebuffer());
                 window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
                 world_pos_buffer_shader->render_to_world_pos_buffer();
                 world.render(true);
@@ -110,6 +110,327 @@ int main() {
 }
 
 ======================================================================
+*** FILE: lines\BridgeLine.h ***
+======================================================================
+
+#ifndef BRIDGELINE_H
+#define BRIDGELINE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <vector>
+#include "Line2D.h"
+#include "Texture.h"
+#include "TerrainData.h"
+
+class BridgeLine : public Line2D
+{
+private:
+    const TerrainData *td;
+public:
+    BridgeLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
+    BridgeLine(const TerrainData *td, vector<vec2> points) : Line2D(points, PATH_THICKNESS), td(td) {}
+    
+    void initialize_shader_properties() override {
+        Shader *shader = new TERRAIN_LINE_SHADER;
+        shader->use();
+
+        shader->setVec4("line_colour", Colour::BRIDGE);
+        // shader->setVec3("max_steepness_colour", Colour::RED );
+        // shader->setVec3("min_steepness_colour", Colour::BLUE );
+        shader->setBool("show_steepness", false);
+        
+        shader->setTexture("heightmap", new Texture(td->heightmap_path,true,true));
+        shader->setFloat("heightmap_scale", td->vertical_scale);
+        shader->setFloat("steepness_scale", STEEPNESS_SCALE);
+        shader->setInt("heightmap_resolution_x", td->resolution_x);
+        shader->setInt("heightmap_resolution_y", td->resolution_y);
+
+        shader->setFloat("terrain_offset_distance", 0.f);
+        //shader->setFloat("line_thickness", PATH_THICKNESS);
+
+        // shader->setFloat("max_steepness_value", 1.f);
+
+        set_shader(shader);
+    }
+};
+
+#endif 
+
+======================================================================
+*** FILE: lines\Line.h ***
+======================================================================
+
+#ifndef LINE_H
+#define LINE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Line : public Object
+{
+private:
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    std::vector<vec3> points;
+    float line_thickness = 5.f;
+
+public:
+    Line(std::vector<vec3> points, float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
+    { render_to_world_pos = false; points.clear(); }
+    
+    Line(float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
+    { render_to_world_pos = false; points.clear(); }
+
+    void construct() override {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    void render() override {
+        if (!visible) return;
+        
+        if (points.size() < 2) return;
+       
+        //glDisable(GL_DEPTH_TEST);
+
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_DYNAMIC_DRAW);
+
+        glLineWidth(line_thickness);
+        
+        glDrawArrays(GL_LINE_STRIP, 0, points.size());
+       
+        glBindVertexArray(0);
+        //glEnable(GL_DEPTH_TEST);
+    }
+
+    void add_point(vec3 p) { points.push_back(p); }
+    void add_points(std::vector<vec3> new_points) { for (auto p : new_points) points.push_back(p); }
+    void set_points(std::vector<vec3> new_points) { this->points = new_points; }
+    void clear_points() { points.clear(); }
+    int get_point_num() { return points.size(); }
+    std::vector<vec3> get_points() { return points; }
+    vec3 get_last_point() { return points.back(); }
+
+    ~Line() override {
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+    }
+};
+
+#endif 
+
+======================================================================
+*** FILE: lines\Line2D.h ***
+======================================================================
+
+#ifndef LINE2D_H
+#define LINE2D_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Line2D : public Object
+{
+private:
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    std::vector<vec2> points;
+    float line_thickness = 5.f;
+
+public:
+    Line2D(std::vector<vec2> points, float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
+    { render_to_world_pos = false; points.clear(); }
+    
+    Line2D(float line_thickness = 3.f)
+        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
+    { render_to_world_pos = false; points.clear(); }
+
+    void construct() override {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    void render() override {
+        if (!visible) return;
+        if (points.size() < 2) return;
+       
+        //glDisable(GL_DEPTH_TEST);
+
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec2), points.data(), GL_DYNAMIC_DRAW);
+
+        glLineWidth(line_thickness);
+        
+        glDrawArrays(GL_LINE_STRIP, 0, points.size());
+       
+        glBindVertexArray(0);
+        //glEnable(GL_DEPTH_TEST);
+    }
+
+    void add_point(vec2 p) { points.push_back(p); }
+    void add_points(std::vector<vec2> new_points) { for (auto p : new_points) points.push_back(p); }
+    void set_points(std::vector<vec2> new_points) { this->points = new_points; }
+    void clear_points() { points.clear(); }
+    int get_point_num() { return points.size(); }
+    std::vector<vec2> get_points() { return points; }
+    vec2 get_last_point() { return points.back(); }
+
+    ~Line2D() override {
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+    }
+};
+
+#endif 
+
+======================================================================
+*** FILE: lines\TerrainLine.h ***
+======================================================================
+
+#ifndef TERRAINLINE_H
+#define TERRAINLINE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <vector>
+#include "Line2D.h"
+#include "Texture.h"
+#include "TerrainData.h"
+
+class TerrainLine : public Line2D
+{
+private:
+    const TerrainData *td;
+public:
+    TerrainLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
+    TerrainLine(const TerrainData *td, vector<vec2> points) : Line2D(points, PATH_THICKNESS), td(td) {}
+    
+    void initialize_shader_properties() override {
+        Shader *shader = new TERRAIN_LINE_SHADER;
+        shader->use();
+
+        shader->setVec4("line_colour", PATH_COLOUR );
+        shader->setVec3("max_steepness_colour", Colour::RED );
+        shader->setVec3("min_steepness_colour", Colour::BLUE );
+        shader->setBool("show_steepness", true);
+        
+        shader->setTexture("heightmap", new Texture(td->heightmap_path,true,true));
+        shader->setFloat("heightmap_scale", td->vertical_scale);
+        shader->setFloat("steepness_scale", STEEPNESS_SCALE);
+        shader->setInt("heightmap_resolution_x", td->resolution_x);
+        shader->setInt("heightmap_resolution_y", td->resolution_y);
+
+        shader->setFloat("terrain_offset_distance", PATH_TERRAIN_OFFSET_DIST);
+        //shader->setFloat("line_thickness", PATH_THICKNESS);
+
+        shader->setFloat("max_steepness_value", 1.f);
+
+        set_shader(shader);
+    }
+};
+
+#endif 
+
+======================================================================
+*** FILE: lines\TunnelLine.h ***
+======================================================================
+
+#ifndef TUNNELLINE_H
+#define TUNNELLINE_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <vector>
+#include "Line2D.h"
+#include "Texture.h"
+#include "TerrainData.h"
+
+class TunnelLine : public Line2D
+{
+private:
+    const TerrainData *td;
+public:
+    TunnelLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
+    TunnelLine(const TerrainData *td, vector<vec2> points) : Line2D(points, PATH_THICKNESS), td(td) {}
+    
+    void configure_render_properties() override {
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        Line2D::configure_render_properties();
+    }
+    void disable_render_properties() override {
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        Line2D::disable_render_properties();
+    }
+
+    void initialize_shader_properties() override {
+        Shader *shader = new TERRAIN_LINE_SHADER;
+        shader->use();
+
+        shader->setVec4("line_colour", Colour::TUNNEL );
+        // shader->setVec3("max_steepness_colour", Colour::RED );
+        // shader->setVec3("min_steepness_colour", Colour::BLUE );
+        shader->setBool("show_steepness", false);
+        
+        shader->setTexture("heightmap", new Texture(td->heightmap_path,true,true));
+        shader->setFloat("heightmap_scale", td->vertical_scale);
+        shader->setFloat("steepness_scale", STEEPNESS_SCALE);
+        shader->setInt("heightmap_resolution_x", td->resolution_x);
+        shader->setInt("heightmap_resolution_y", td->resolution_y);
+
+        shader->setFloat("terrain_offset_distance", 0.f);
+        //shader->setFloat("line_thickness", PATH_THICKNESS);
+
+        // shader->setFloat("max_steepness_value", 1.f);
+
+        set_shader(shader);
+    }
+};
+
+#endif 
+
+======================================================================
 *** FILE: path_drawer\AutoSlopePathDrawer.h ***
 ======================================================================
 
@@ -141,6 +462,73 @@ public:
         float step = CONSTANT_SLOPE_PATH_POINT_STEP;
         std::vector<vec2> path_left = terrain->elevation_line_drawer.generate_auto_slope_path(start,end,max_slope,step);
         line->set_points(path_left);
+    }
+};
+
+#endif
+
+======================================================================
+*** FILE: path_drawer\BridgePathDrawer.h ***
+======================================================================
+
+#ifndef BRIDGEPATH_H
+#define BRIDGEPATH_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <vector>
+#include "Terrain.h"
+#include "InputHandler.h"
+#include "TerrainPathDrawer.h"
+#include "BridgeLine.h"
+#include "World.h"
+
+using namespace glm;
+using namespace std;
+
+#define STRAIGHT_PATH_MINIMUM_TERRAIN_STEP 0.005f
+
+class BridgePathDrawer : public TerrainPathDrawer
+{
+    ElevationLineDrawer *elevation_data;
+
+public:
+    BridgePathDrawer (Terrain *terrain, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,0.f,debug_msg) { 
+            elevation_data = &terrain->elevation_line_drawer;
+        }   
+    
+    Line2D* create_line_obj() override {
+        Line2D* new_line = new BridgeLine(terrain->terrain_data); 
+        new_line->set_parent(terrain->terrain_obj);
+        return new_line;
+    }
+
+    void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) override {
+        /* check if straight line from start to end doesnt intersect any terrain */
+        const float line_minimum_step = 0.001f;
+        float line_dist = glm::distance(start,end);
+        int line_check_num = line_dist / line_minimum_step;
+
+        float start_h = elevation_data->get_height_at_local_pos(start);
+        float end_h = elevation_data->get_height_at_local_pos(end);
+
+        vec2 last_point = start;
+
+        for (int i=1; i<line_check_num-1; i++){
+            float t = ((float)i / (line_check_num-1));
+            vec2 along_line_pos = start*(1-t) + end*t; // lerp
+            float line_h = start_h + (end_h-start_h)*t;
+            float terrain_h = elevation_data->get_height_at_local_pos(along_line_pos);
+
+            if (line_h <= terrain_h) break;
+            last_point = (i == line_check_num-2) ? end : along_line_pos; // snap to end pos in last iteration
+        }
+
+        /* apply exact path from start to end */
+        std::vector<vec2> segment = { start, last_point };
+        line->set_points(segment);
     }
 };
 
@@ -204,20 +592,28 @@ private:
         int link_id;
         vec2 exact_position;
     };
-    static const int GRID_SIZE = 32; 
-    const float GRID_STEP = 1.f / GRID_SIZE;
-    std::vector<GridEntry> grid[GRID_SIZE][GRID_SIZE];
+    static const int GRID_SIZE_X = 32; 
+    static const int GRID_SIZE_Y = GRID_SIZE_X; 
+    const float GRID_STEP_X = 1.f / GRID_SIZE_X;
+    const float GRID_STEP_Y = GRID_STEP_X;
+
+    std::vector<GridEntry> grid[GRID_SIZE_X][GRID_SIZE_Y];
+    std::vector<unsigned char> built_path_mask;
+    Texture* built_path_tex;
 
 public:
+
+    PathSpatialGrid () : built_path_mask(GRID_SIZE_X*GRID_SIZE_Y, 0) { }
+
     void clear() {
-        for(int x=0; x<GRID_SIZE; x++)
-            for(int y=0; y<GRID_SIZE; y++) grid[x][y].clear();
+        for(int x=0; x<GRID_SIZE_X; x++)
+            for(int y=0; y<GRID_SIZE_Y; y++) grid[x][y].clear();
     }
 
     void register_path_segment(int add_link_id, vector<vec2> points) 
     {    
         // find all distinct grid cells where path points lay
-        ivec2 last_grid_point = ivec2(0);
+        ivec2 last_grid_point = ivec2(-1);
         for (auto p : points) {
             ivec2 grid_pos = get_grid_cell(p);
             if (grid_pos != last_grid_point) {
@@ -231,14 +627,13 @@ public:
     {
         // im sorry comuputer , it has to be done 
         // go thru whole grid and remove all idx matching remove_link_id
-        for (int x=0; x<GRID_SIZE; x++) {
-            for (int y=0; y<GRID_SIZE; y++) {
-                for (int i=0; i<grid[x][y].size(); i++) {
-                    int link_id = grid[x][y][i].link_id;
-                    if (link_id == remove_link_id) {
-                        grid[x][y].erase(grid[x][y].begin()+i);
-                    }
-                }
+        for (int x=0; x<GRID_SIZE_X; x++) {
+            for (int y=0; y<GRID_SIZE_Y; y++) {
+                auto& cell = grid[x][y];
+                cell.erase(std::remove_if(cell.begin(), cell.end(), 
+                    [remove_link_id](const GridEntry& e) { 
+                        return e.link_id == remove_link_id; 
+                    }), cell.end());
             }
         }
     }
@@ -247,15 +642,16 @@ public:
     int get_link_at_pos(vec2 pos, float radius, vec2& out_closest_point) 
     {
         // check what area of grid need to be checked (minimum is 3x3 because we might be on grid cell edge)
-        int search_size = 1 + (int)(radius / GRID_STEP);
+        int search_size_x = 1 + (int)(radius / GRID_STEP_X);
+        int search_size_y = 1 + (int)(radius / GRID_STEP_Y);
         
         ivec2 grid_cell = get_grid_cell(pos);
         float min_dist = radius + 0.00001f;
         int found_link = -1;
 
-        for (int x=grid_cell.x-search_size; x<grid_cell.x+search_size; x++) {
-            for (int y=grid_cell.y-search_size; y<grid_cell.y+search_size; y++) { 
-                if (x<0 || y<0 || x>=GRID_SIZE || y>=GRID_SIZE) continue;
+        for (int x=grid_cell.x-search_size_x; x<grid_cell.x+search_size_x; x++) {
+            for (int y=grid_cell.y-search_size_y; y<grid_cell.y+search_size_y; y++) { 
+                if (x<0 || y<0 || x>=GRID_SIZE_X || y>=GRID_SIZE_Y) continue;
                 for (GridEntry entry : grid[x][y]) {
                     float dist = glm::distance(pos, entry.exact_position);
                     if (dist < min_dist) {
@@ -269,11 +665,28 @@ public:
         return found_link; // will be -1 if no links in range
     }
 
+    void build_path(int link_id) {
+        for (int x=0; x<GRID_SIZE_X; x++) {
+            for (int y=0; y<GRID_SIZE_Y; y++) {
+                int idx = y*GRID_SIZE_X + x;
+                for (GridEntry ge : grid[x][y])  {
+                    if (ge.link_id == link_id) built_path_mask[idx] =  (unsigned char)255.f; // this line crashed the app
+                }
+            }
+        }
+
+        delete built_path_tex;
+        built_path_tex = new Texture(GRID_SIZE_X, GRID_SIZE_Y, built_path_mask.data(), 1);
+    }
+    Texture* get_built_path_mask() {
+        return built_path_tex;
+    }
+
 private:
     ivec2 get_grid_cell(vec2 point) {
-        int gx = (int)((point.x + 0.5f) * GRID_SIZE);
-        int gy = (int)((point.y + 0.5f) * GRID_SIZE);
-        return ivec2(std::clamp(gx, 0, GRID_SIZE-1), gy = std::clamp(gy, 0, GRID_SIZE-1));
+        int gx = (int)((point.x + 0.5f) * GRID_SIZE_X);
+        int gy = (int)((point.y + 0.5f) * GRID_SIZE_Y);
+        return ivec2(std::clamp(gx, 0, GRID_SIZE_X-1), gy = std::clamp(gy, 0, GRID_SIZE_Y-1));
     }
 };
 
@@ -299,6 +712,7 @@ private:
 #include "TerrainLine.h"
 #include "Interactable.h"
 #include "PathSpacialGrid.h"
+#include "Texture.h"
 #include <set>
 
 using namespace glm;
@@ -315,18 +729,11 @@ struct TerrainNode {
     bool intersection = false;
     bool optional = false;
 };
-struct TerrainLinkData {
-    int start_handle_id;
-    int end_handle_id;
-
-    std::vector<vec2> points;
-};
 struct TerrainLink {
-    int link_id;
     int start_handle_id;
     int end_handle_id;
-
-    TerrainLine *line_obj;
+    Line2D *line_obj;
+    int link_id = -1;
 };
 
 class TerrainPathSystem 
@@ -344,6 +751,8 @@ protected:
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
 
+    Texture* build_paths_texture = new TEXTURE_EMPTY;
+
 public:
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
@@ -360,16 +769,14 @@ public:
         return id; // will increase in create_new_node fn
     } 
 
-    void add_link(TerrainLinkData new_link_data) {
-        TerrainLine *line = new TerrainLine(terrain->terrain_data, new_link_data.points);
-        line->set_parent(terrain->terrain_obj);
-        TerrainLink new_link = { link_number++, new_link_data.start_handle_id, new_link_data.end_handle_id, line };
+    void add_link(TerrainLink new_link) {
+        new_link.link_id = link_number++;
         links.push_back(new_link);
 
         // Merging Logic: Propagate the smaller ID to the larger ID group
         // ???
 
-        spatial_grid.register_path_segment(new_link.link_id, new_link_data.points);
+        spatial_grid.register_path_segment(new_link.link_id, new_link.line_obj->get_points());
     }
 
     void remove_link(int id) {
@@ -410,6 +817,17 @@ public:
     int get_link_at_pos(vec2 pos, float radius, vec2& out_closest_point) {
         return spatial_grid.get_link_at_pos(pos, radius, out_closest_point);
     }
+
+    void build_path_and_apply_new_mask(int link_id, Shader* terrain_shader) {
+        for (auto l : links) {
+            if (l.link_id == link_id) {
+                l.line_obj->set_visible(false);
+            }
+        }
+        spatial_grid.build_path(link_id);
+        Texture* built_path_tex = spatial_grid.get_built_path_mask();
+        if (built_path_tex) terrain_shader->setTexture("built_path_mask", built_path_tex);
+    }   
 
 };
 
@@ -830,54 +1248,6 @@ public:
 #endif
 
 ======================================================================
-*** FILE: path_drawer\TerrainLine.h ***
-======================================================================
-
-#ifndef TERRAINLINE_H
-#define TERRAINLINE_H
-
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <vector>
-#include "Line2D.h"
-#include "Texture.h"
-#include "TerrainData.h"
-
-class TerrainLine : public Line2D
-{
-private:
-    const TerrainData *td;
-public:
-    TerrainLine(const TerrainData *td) : Line2D(PATH_THICKNESS), td(td) {}
-    TerrainLine(const TerrainData *td, vector<vec2> points) : Line2D(points, PATH_THICKNESS), td(td) {}
-    
-    void initialize_shader_properties() override {
-        Shader *shader = new TERRAIN_LINE_SHADER;
-        shader->use();
-
-        shader->setVec3("line_colour", PATH_COLOUR );
-        shader->setVec3("max_steepness_colour", Colour::RED );
-        shader->setVec3("min_steepness_colour", Colour::BLUE );
-        shader->setBool("show_steepness", true);
-        
-        shader->addTexture(new Texture(td->heightmap_path,true,true)); shader->setInt("heightmap", shader->get_last_loaded_tex_slot());
-        shader->setFloat("heightmap_scale", td->vertical_scale);
-        shader->setFloat("steepness_scale", STEEPNESS_SCALE);
-        shader->setInt("heightmap_resolution_x", td->resolution_x);
-        shader->setInt("heightmap_resolution_y", td->resolution_y);
-
-        shader->setFloat("terrain_offset_distance", PATH_TERRAIN_OFFSET_DIST);
-        //shader->setFloat("line_thickness", PATH_THICKNESS);
-
-        shader->setFloat("max_steepness_value", 1.f);
-
-        set_shader(shader);
-    }
-};
-
-#endif 
-
-======================================================================
 *** FILE: path_drawer\TerrainPathDrawer.h ***
 ======================================================================
 
@@ -907,14 +1277,19 @@ public:
     int start_draw_handle;
 
     Terrain *terrain;
-    TerrainLine *current_line;
+    Line2D *current_line;
 
     TerrainPathDrawer (Terrain *terrain, float slope, float max_slope = 0.15f, bool debug_msg = false) 
         : terrain(terrain), debug_msg(debug_msg), slope(slope), max_slope(max_slope) {
         
-        current_line = new TerrainLine(terrain->terrain_data);
-        current_line->set_parent(terrain->terrain_obj);
+        current_line = create_line_obj();
     }   
+    
+    virtual Line2D* create_line_obj () {
+        Line2D* new_line = new TerrainLine(terrain->terrain_data); 
+        new_line->set_parent(terrain->terrain_obj);
+        return new_line;
+    }
 
     virtual void update_path (InputHandler *input_handler) {
         /* track scroll value */
@@ -939,6 +1314,8 @@ public:
     
     virtual bool start_drawing_at_pos (vec3 local_pos, int handle_id) {
         if (abs(local_pos.x) > 0.5f || abs(local_pos.y) > 0.5f) return false;
+
+        if (drawing_path) reset_drawing();
         
         start_draw_handle = handle_id;
         drawing_path = true;
@@ -953,20 +1330,26 @@ public:
         drawing_path = false;
         recalculate_path(current_line, origin_point, local_pos, slope);
 
-        if (debug_msg) std::cout << (current_line->get_point_num() > 1 ? "Path set." : "Path empty") << std::endl;
+        if (current_line->get_points().size() < 2) {
+            std::cout << "Created path is empty" << std::endl;
+            return false;
+        }
+        
+        if (debug_msg) std::cout << "Path set." << std::endl;
         return true;
     }
-    TerrainLinkData create_terrain_link(int end_handle_id) {
-        TerrainLinkData new_link = {
-            start_draw_handle, end_handle_id, current_line->get_points()
+    TerrainLink create_terrain_link(int end_handle_id) {
+
+        TerrainLink new_link = {
+            start_draw_handle, end_handle_id, current_line
         };
-        current_line->clear_points();
+        current_line = create_line_obj(); // we return the current line, create new one
         return new_link;
     }
 
     virtual void recalculate_path(Line2D* line, vec2 start, vec2 end, float slope_value=0.f) = 0;
 
-    void reset() { current_line->clear_points(); drawing_path = false; }
+    void reset_drawing() { current_line->clear_points(); drawing_path = false; }
     void clear_path() { current_line->clear_points(); }
     bool is_drawing_path() { return drawing_path; }
     vec2 get_end_point() { return current_line->get_last_point(); }
@@ -975,7 +1358,76 @@ public:
     float get_slope() { return slope; }
     float get_max_slope() { return max_slope; }
 
-    ~TerrainPathDrawer() { clear_path();  }
+    ~TerrainPathDrawer() { clear_path(); delete current_line; }
+};
+
+#endif
+
+======================================================================
+*** FILE: path_drawer\TunnelPathDrawer.h ***
+======================================================================
+
+#ifndef TUNNELPATH_H
+#define TUNNELPATH_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <vector>
+#include "Terrain.h"
+#include "InputHandler.h"
+#include "TerrainPathDrawer.h"
+#include "TunnelLine.h"
+#include "Line.h"
+#include "World.h"
+
+using namespace glm;
+using namespace std;
+
+#define STRAIGHT_PATH_MINIMUM_TERRAIN_STEP 0.005f
+
+class TunnelPathDrawer : public TerrainPathDrawer
+{
+    Terrain *t;
+    ElevationLineDrawer *elevation_data;
+
+public:
+    TunnelPathDrawer (Terrain *terrain, bool debug_msg = false) 
+        : TerrainPathDrawer(terrain,0.f,debug_msg), t(terrain) { 
+            elevation_data = &terrain->elevation_line_drawer;
+        }   
+
+    Line2D* create_line_obj() override {
+        Line2D* new_line = new TunnelLine(terrain->terrain_data); 
+        new_line->set_parent(terrain->terrain_obj);
+        return new_line;
+    }
+
+    void recalculate_path (Line2D* line, vec2 start, vec2 end, float slope) override {
+        /* check if straight line from start to end doesnt intersect any terrain */
+        const float line_minimum_step = 0.001f;
+        float line_dist = glm::distance(start,end);
+        int line_check_num = line_dist / line_minimum_step;
+
+        float start_h = elevation_data->get_height_at_local_pos(start);
+        float end_h = elevation_data->get_height_at_local_pos(end);
+
+        vec2 last_point = start;
+
+        for (int i=1; i<line_check_num-1; i++){
+            float t = ((float)i / (line_check_num-1));
+            vec2 along_line_pos = start*(1-t) + end*t; // lerp
+            float line_h = start_h + (end_h-start_h)*t;
+            float terrain_h = elevation_data->get_height_at_local_pos(along_line_pos);
+
+            if (line_h >= terrain_h) break;
+            last_point = (i == line_check_num-2) ? end : along_line_pos; // snap to end pos in last iteration
+        }
+
+        /* apply exact path from start to end */
+        std::vector<vec2> segment = { start, last_point };
+        line->set_points(segment);
+    }
 };
 
 #endif
@@ -1166,7 +1618,6 @@ private:
 #include "user_interaction/InputHandler.h"
 #include "textures/Texture.h"
 #include "Terrain.h"
-#include "world_objects/Line.h"
 #include "Panel.h"
 #include "Sphere.h"
 #include "Interactable.h"
@@ -1339,6 +1790,8 @@ public:
 #include "AutoSlopePathDrawer.h"
 #include "PathSystem.h"
 #include "StraightPathDrawer.h"
+#include "TunnelPathDrawer.h"
+#include "BridgePathDrawer.h"
 #include "ToolbarPanel.h"
 #include "TextPanel.h"
 #include "UIRow.h"
@@ -1351,9 +1804,9 @@ class TerrainScene : public Scene
 private:
     enum ButtonID {
         MODE_STRAIGHT_PATH=0, MODE_AUTO_SLOPE=1, MODE_ISO_PATH=2,
-        TOOL_BRIDGE,TOOL_TUNNEL,TOOL_RAIL,TOOL_ROAD,
+        MODE_BRIDGE,MODE_TUNNEL,MODE_RAIL,MODE_ROAD,
         BUTTON_CREATE_PATH_HANDLE, BUTTON_CREATE_BRIDGE, BUTTON_CREATE_TUNNEL, 
-        BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
+        BUTTON_BUILD, BUTTON_CREATE_INTERSECTION, BUTTON_DRAG_PATH, BUTTON_DELETE_PATH, 
     };
     
     InteractableManager *interactable_manager;
@@ -1361,9 +1814,9 @@ private:
     Terrain *terrain;   
     Plane *terrain_obj;
     const TerrainData *terrain_data;
-    TerrainPathDrawer *terrain_path_drawer[3];
+    std::unordered_map<int,TerrainPathDrawer*> terrain_path_drawer;
     
-    float last_scroll_value = 1.f;
+    float last_scroll_value = 1.f, post_click_timer = 1.f;
     int current_path_draw_mode = ButtonID::MODE_STRAIGHT_PATH;
     int draw_start_handle_id = 0;
     int click_menu_link_id_selected = 0;
@@ -1407,6 +1860,8 @@ public:
         terrain_path_drawer[ButtonID::MODE_STRAIGHT_PATH] = new StraightPathDrawer(terrain, true);
         terrain_path_drawer[ButtonID::MODE_AUTO_SLOPE] = new AutoSlopePathDrawer(terrain, 1.f, true);
         terrain_path_drawer[ButtonID::MODE_ISO_PATH] = new MatchSlopePathDrawer(terrain, 0.25f, true);
+        terrain_path_drawer[ButtonID::MODE_TUNNEL] = new TunnelPathDrawer(terrain, true);
+        terrain_path_drawer[ButtonID::MODE_BRIDGE] = new BridgePathDrawer(terrain, true);
 
         // --- config path system ----
         path_system = new TerrainPathSystem(terrain, interactable_manager);
@@ -1470,6 +1925,14 @@ public:
                 click_menu_change_visible(path_click_menu, false);
             }
         }
+
+        // reset line drwwaing on right click
+        if (curr_path_drawer->is_drawing_path() && user_input->is_right_mouse_pressed_up()) {
+            curr_path_drawer->reset_drawing();
+        }
+
+        /* timer step */
+        post_click_timer += dt;
     }
 
     Shader* get_world_pos_buffer_shader() override {
@@ -1479,7 +1942,7 @@ public:
     void interact_callback (Interactable *interactable) {
         switch (interactable->type) {
             case InteractionType::PATH_HANDLE:
-                if (!curr_path_drawer->is_drawing_path()) {
+                if (!curr_path_drawer->is_drawing_path() && post_click_timer > 0.15f) {
                     if (curr_path_drawer->start_drawing_at_pos(interactable->position, interactable->get_id())){
                         interactable->disable();
                     }
@@ -1509,16 +1972,36 @@ public:
             case ButtonID::MODE_STRAIGHT_PATH:
             case ButtonID::MODE_AUTO_SLOPE:
             case ButtonID::MODE_ISO_PATH:
+            case ButtonID::MODE_BRIDGE:
+            case ButtonID::MODE_TUNNEL:
                 current_path_draw_mode = (int)id; 
                 break;
-
+                
             /* TERRAIN CLICK MENU */
             case ButtonID::BUTTON_CREATE_PATH_HANDLE:
                 path_system->create_path_handle_at_pos(reference_pos_terrain_local);
                 click_menu_change_visible(terrain_click_menu, false);
                 break;
+            case ButtonID::BUTTON_CREATE_TUNNEL: {
+                current_path_draw_mode = ButtonID::MODE_TUNNEL;
+                int new_handle = path_system->create_path_handle_at_pos(reference_pos_terrain_local);
+                curr_path_drawer->start_drawing_at_pos(reference_pos_terrain_local, new_handle);
+                click_menu_change_visible(terrain_click_menu, false);
+                break;
+            }
+            case ButtonID::BUTTON_CREATE_BRIDGE: {
+                current_path_draw_mode = ButtonID::MODE_BRIDGE; 
+                int new_handle = path_system->create_path_handle_at_pos(reference_pos_terrain_local);
+                curr_path_drawer->start_drawing_at_pos(reference_pos_terrain_local, new_handle);
+                click_menu_change_visible(terrain_click_menu, false);
+                break;
+            }
 
             /* PATH CLICK MENU */
+            case ButtonID::BUTTON_BUILD:
+                path_system->build_path_and_apply_new_mask(click_menu_link_id_selected, terrain->terrain_shader);
+                click_menu_change_visible(path_click_menu, false);
+                break;
             case ButtonID::BUTTON_CREATE_INTERSECTION:
                 path_system->create_path_handle_at_pos(reference_pos_terrain_local);
                 click_menu_change_visible(path_click_menu, false);
@@ -1529,7 +2012,8 @@ public:
                 break;
             
         }
-        terrain_path_drawer[current_path_draw_mode]->reset(); 
+        terrain_path_drawer[current_path_draw_mode]->reset_drawing(); 
+        post_click_timer = 0.f;
 
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << clicked << std::endl;
     }
@@ -1571,8 +2055,8 @@ private:
         std::string icon_filepath = TEXTURE_ICON_FILE_PATH;
 
         ToolbarPanel* toolbar_left = new ToolbarPanel(button_gap, toolbar_bg, button_size); 
-        toolbar_left->add_button(ButtonID::TOOL_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
-        toolbar_left->add_button(ButtonID::TOOL_TUNNEL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/tunnel_tool.png").c_str()));
+        toolbar_left->add_button(ButtonID::MODE_BRIDGE, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/bridge_tool.png").c_str()));
+        toolbar_left->add_button(ButtonID::MODE_TUNNEL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/tunnel_tool.png").c_str()));
         toolbar_row->add_item(toolbar_left);
         ToolbarPanel* path_toolbar = new ToolbarPanel(button_gap, toolbar_bg, button_size);
         path_toolbar->add_button(ButtonID::MODE_STRAIGHT_PATH, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/straight_tool.png").c_str()));
@@ -1580,8 +2064,8 @@ private:
         path_toolbar->add_button(ButtonID::MODE_ISO_PATH, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/match_slope_tool.png").c_str()));
         toolbar_row->add_item(path_toolbar);
         ToolbarPanel* toolbar_right = new ToolbarPanel(button_gap, toolbar_bg, button_size);
-        toolbar_right->add_button(ButtonID::TOOL_ROAD, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/road_tool.png").c_str()));
-        toolbar_right->add_button(ButtonID::TOOL_RAIL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/rail_tool.png").c_str()));
+        toolbar_right->add_button(ButtonID::MODE_ROAD, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/road_tool.png").c_str()));
+        toolbar_right->add_button(ButtonID::MODE_RAIL, false, new Texture(((std::string)(TEXTURE_ICON_FILE_PATH)).append("/rail_tool.png").c_str()));
         toolbar_row->add_item(toolbar_right);
         screen_ui->place(toolbar_row);
 
@@ -1596,6 +2080,7 @@ private:
         screen_ui->place( terrain_click_menu );
 
         path_click_menu = new UIList(0, Colour::DARK_GREY, 5);
+        path_click_menu->add_item( new TextButton("BUILD PATH", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_BUILD, false) );
         path_click_menu->add_item( new TextButton("create intersection", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_CREATE_INTERSECTION, false) );
         path_click_menu->add_item( new TextButton("drag path segment", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DRAG_PATH, false) );
         path_click_menu->add_item( new TextButton("delete path", click_menu_font_size, Colour::WHITE, ButtonID::BUTTON_DELETE_PATH, false) );
@@ -1721,6 +2206,7 @@ public:
 // Wartości są w zakresie [0.0, 1.0].
 namespace Colour {
     using glm::vec4;
+    using glm::vec3;
 
     // --- Podstawowe kolory ---
     const vec4 WHITE      = vec4(1.0f, 1.0f, 1.0f, 1.0f); // Biały
@@ -1749,9 +2235,12 @@ namespace Colour {
     const vec4 DARK_BROWN = vec4(46/255.f, 26/255.f, 0, 1.f); // Dark brown 'rgba(46, 26, 0, 1)'
     
     // --- Palette ---
-    const vec4 TERRAIN_SIDE_COLOUR = vec4(43/255.f, 37/255.f, 29/255.f, 1.f); // greyish brown 'rgba(43, 37, 29, 1)'
-    const vec4 SNOW_COLOUR = vec4(1.f,1.f,1.f,0.75f); // greyish brown 'rgba(180, 180, 180, 1)'
+    const vec4 TERRAIN_SIDE = vec4(43/255.f, 37/255.f, 29/255.f, 1.f); // greyish brown 'rgba(43, 37, 29, 1)'
+    const vec4 SNOW = vec4(1.f,1.f,1.f,0.75f); // greyish brown 'rgba(180, 180, 180, 1)'
     const vec4 DEFAULT_RENDER_BACKGROUND = vec4(132.f/255.f, 178.f/255.f, 179.f/255.f, 1.0f);
+    const vec4 TUNNEL = vec4(vec3(Colour::GREY), 0.67f);
+    const vec4 BRIDGE = Colour::RED;
+    const vec4 ROAD = Colour::BLACK;
 }
 
 #endif // COLOURDATA_H
@@ -1893,9 +2382,9 @@ void print_v3 (glm::vec3 v, const char* name = "Vector") {
 
 class Shader
 {
-public:
+    struct TextureChannel { int slot; Texture* tex; };
     unsigned int ID;
-    std::vector<Texture*> textures;
+    std::unordered_map<std::string,TextureChannel> textures;
     bool heightmap_enabled;
     bool uses_texture = false;
     bool has_worldpos_buffer = false;
@@ -1904,6 +2393,8 @@ public:
     GLuint worldPosFBO;          
     GLuint worldPosTexture;      
     GLuint worldPosDepthRBO;    
+
+public:
 
     // Konstruktor teraz przyjmuje opcjonalny 3. argument
     // ------------------------------------------------------------------------
@@ -2008,7 +2499,7 @@ public:
     void use() 
     { 
         glUseProgram(ID); 
-        for (int i=0; i<textures.size(); i++) textures[i]->use(i);
+        for (auto t : textures) t.second.tex->use(t.second.slot);
     }
 
     void setBool(const std::string &name, bool value) const
@@ -2039,16 +2530,24 @@ public:
         unsigned int loc = glGetUniformLocation(ID, name.c_str());
         glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(matrix));
     }
-    void addTexture(Texture* new_tex){
+    void setTexture(std::string name, Texture* new_tex){
         if (textures.size() >= MAX_TEXTURE_SLOTS) {
             std::cout<< "Max number of textures loaded reached!" << std::endl;
             return;
         } 
+
         uses_texture = true;
-        textures.push_back(new_tex);
-    }
-    int get_last_loaded_tex_slot() {
-        return textures.size()-1;
+
+        if (textures.count(name) == 0) { // add new tex
+            TextureChannel new_tex_channel = { (int)textures.size(), new_tex };
+            textures[name] = new_tex_channel;
+            use();
+            setInt(name, new_tex_channel.slot);
+        } 
+        else { // modify existing (keep same slot)
+            textures[name].tex = new_tex;
+        }
+
     }
     
     void config_worldpos_buffer() {
@@ -2127,6 +2626,9 @@ public:
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, worldPosDepthRBO);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    GLuint get_world_framebuffer() {
+        return worldPosFBO;
     }
         
 private:
@@ -2211,9 +2713,7 @@ public:
     
     static Shader& get_terrain_shader(Texture *heightmap_tex, float heightmap_scale, Texture *texture = &TEXTURE_MISSING) {
         static Shader shader = Shader(VERTEX_TERRAIN_PATH, FRAGMENT_TERRAIN_PATH);
-        shader.use();
-        shader.addTexture(texture); shader.setInt("texture", shader.get_last_loaded_tex_slot());
-        shader.addTexture(heightmap_tex); shader.setInt("heightmap", shader.get_last_loaded_tex_slot());
+        shader.setTexture("heightmap", new TEXTURE_EMPTY);
         return shader;
     }
     
@@ -2314,6 +2814,10 @@ uniform float snow_max_steepness;
 uniform vec3 reference_point_pos;
 uniform bool draw_reference;
 
+// --- Terrain path mask and drawing ---
+uniform sampler2D built_path_mask;
+uniform vec3 path_colour = vec3(1.f,1.f,1.f);
+
 /* Colours */
 const vec3 cursor_colour = vec3(0.0, 0.2, 1.0); // blue
 const vec3 reference_colour = vec3(1.0,89/255.f,0); // 'rgba(255, 89, 0, 1)'
@@ -2391,6 +2895,12 @@ void main(){
         colour = mix(colour, iso_line_colour.rgb, total_line*iso_line_colour.a);
     }
 
+    /* Draw roads */
+    float road_alpha = texture(built_path_mask, TexCoord).r;
+    if (road_alpha > 0.001f) {
+        colour = path_colour;
+    }
+
     /* Draw mouse cursor on Terrain */
     vec3 mouseWorldPos = texture(world_pos_texture, u_mouseCoords).rgb;
     float dist = distance(v_worldPos, mouseWorldPos);
@@ -2429,7 +2939,7 @@ in float line_steepness;
 // uniform sampler2D heightmap;
 uniform float max_steepness_value;
 
-uniform vec3 line_colour;
+uniform vec4 line_colour;
 uniform vec3 max_steepness_colour;
 uniform vec3 min_steepness_colour;
 uniform bool show_steepness;
@@ -2441,9 +2951,9 @@ void main()
     if (show_steepness) {
         float steepness_t = clamp(abs(line_steepness)/max_steepness_value, 0.0, 1.0);
         vec3 steepness_colour = mix(min_steepness_colour, max_steepness_colour, steepness_t);
-        FragColor = vec4(steepness_colour, 1.0 );
+        FragColor = vec4(steepness_colour, line_colour.a );
     } 
-    else FragColor = vec4(line_colour, 1.0);
+    else FragColor = line_colour;
 }
 
 
@@ -2622,6 +3132,7 @@ uniform mat4 view;
 uniform mat4 projection;
 
 uniform sampler2D heightmap;
+uniform sampler2D built_path_mask;
 uniform bool heightmap_enabled;
 uniform float heightmap_scale;
 uniform int heightmap_resolution_x = 1024;
@@ -2681,7 +3192,6 @@ void main()
 #include "textures/Texture.h"
 #include "settings/Settings.h"
 #include "Heightmap.h" 
-#include "world_objects/Line.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -2751,6 +3261,7 @@ public:
         if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
         return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
     }
+    float get_height_at_local_pos(vec2 p) { return get_height_at_local_pos(p.x,p.y); }
     
     glm::vec3 get_local_pos_from_uv(float u, float v) {
         u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);
@@ -3678,9 +4189,9 @@ public:
                 /* COLOUR TERRAIN BOUNDARY  */
 
                 if (y < TERRAIN_BOUNDARY_PIXEL_NUM || x < TERRAIN_BOUNDARY_PIXEL_NUM || x >= width-TERRAIN_BOUNDARY_PIXEL_NUM || y >= height-TERRAIN_BOUNDARY_PIXEL_NUM) {
-                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.r * 255.f);
-                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.g * 255.f);
-                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE_COLOUR.b * 255.f);
+                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE.r * 255.f);
+                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE.g * 255.f);
+                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE.b * 255.f);
                     continue;
                 }
 
@@ -3728,7 +4239,7 @@ public:
                     if (steepness * STEEPNESS_SCALE < allowed_steepness) {
                         float snow_transition = glm::clamp(height_above / 50.0f, 0.0f, 1.0f); // Smooth transition at the very bottom edge of snow line
                         float snow_opacity = snow_transition; //glm::clamp(snow_transition, 0.f, 1.f);
-                        final_colour = glm::mix(final_colour, vec3(Colour::SNOW_COLOUR), snow_opacity*Colour::SNOW_COLOUR.a);
+                        final_colour = glm::mix(final_colour, vec3(Colour::SNOW), snow_opacity*Colour::SNOW.a);
                     }
                 }
                 
@@ -3898,10 +4409,10 @@ public:
         shader->setFloat("heightmap_resolution_y", td->resolution_y);
         shader->setFloat("heightmap_scale", td->vertical_scale);
         shader->setBool("heightmap_enabled", true);
-        shader->setVec3("terrain_boundary_colour", Colour::TERRAIN_SIDE_COLOUR);
+        shader->setVec3("terrain_boundary_colour", Colour::TERRAIN_SIDE);
         shader->setInt("terrain_boundrary_pixel_width", TERRAIN_BOUNDARY_PIXEL_NUM);
-        //shader->addTexture(new Texture(td->heightmap_path)); shader->setInt("heightmap",shader->get_last_loaded_tex_slot());
-        shader->addTexture(new Texture(td->areas_data_path)); shader->setInt("terrain_area_data",shader->get_last_loaded_tex_slot());
+        shader->setTexture("heightmap",new Texture(td->heightmap_path, true, true));
+        shader->setTexture("terrain_area_data", new Texture(td->areas_data_path));
 
         // --- Terrain contour lines ---
         shader->setFloat("iso_line_spacing", ISO_LINE_SPACING);
@@ -3909,9 +4420,9 @@ public:
         shader->setVec4("iso_line_colour", CONTOUR_LINE_COLOUR);
 
         // --- Terrain colour pallete ---
-        shader->addTexture(new GRADIENT_ELEVATION); shader->setInt("elevation_gradient",shader->get_last_loaded_tex_slot());
-        shader->addTexture(new GRADIENT_STEEPNESS); shader->setInt("steepness_gradient", shader->get_last_loaded_tex_slot());
-        shader->addTexture(new GRADIENT_WATER); shader->setInt("water_gradient", shader->get_last_loaded_tex_slot());
+        shader->setTexture("elevation_gradient", new GRADIENT_ELEVATION);
+        shader->setTexture("steepness_gradient", new GRADIENT_STEEPNESS);
+        shader->setTexture("water_gradient", new GRADIENT_WATER);
         shader->setFloat("elevation_gradient_max_height", ELEVATION_GRADIENT_MAX_HEIGHT);
         shader->setFloat("elevation_gradient_strength", ELEVATION_GRADIENT_STRENGTH);
         shader->setFloat("steepness_scale", STEEPNESS_SCALE);
@@ -3925,7 +4436,11 @@ public:
         shader->setFloat("snow_level_height", td->snow_level_height);
         shader->setFloat("snow_falloff_range", SNOW_FALLOFF_RANGE);
         shader->setFloat("snow_max_steepness", SNOW_MAX_STEEPNESS);
-        shader->setVec4("snow_colour", Colour::SNOW_COLOUR);
+        shader->setVec4("snow_colour", Colour::SNOW);
+
+        // --- Terrain road map params ---
+        shader->setTexture("built_path_mask", new TEXTURE_EMPTY);
+        shader->setVec3("path_colour", Colour::ROAD);
     }
 };
 
@@ -4002,7 +4517,7 @@ public:
     }
 
     // generate from raw data
-    Texture(int _width, int _height, const unsigned char* data) : width(_width), height(_height)
+    Texture(int _width, int _height, const unsigned char* data, int colour_channels=3) : width(_width), height(_height)
     {
         glGenTextures(1, &ID);
         glBindTexture(GL_TEXTURE_2D, ID);
@@ -4013,7 +4528,17 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        if (colour_channels == 3){
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        }
+        else if (colour_channels == 1) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+        }
+        else {
+            std::cout << "Colour channel number not supported!" << std::endl;
+            return;
+        }
+
         glGenerateMipmap(GL_TEXTURE_2D);
     }
 
@@ -4029,6 +4554,11 @@ public:
         glBindTexture(GL_TEXTURE_2D, ID);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, property);	
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, property);
+    }
+
+    /* static functions */
+    static Texture* merge (Texture* tex_a, Texture* tex_b) {
+        return tex_b;
     }
 };
 #endif
@@ -4927,9 +5457,7 @@ public:
     void set_texture(Texture *tex) override { 
         active_texture = tex;
         uses_texture = true;
-        shader->addTexture(tex); 
-        shader->use(); 
-        shader->setInt("image", shader->get_last_loaded_tex_slot()); 
+        shader->setTexture("image", tex); 
         render_props_changed = true; 
     }
 
@@ -5719,171 +6247,6 @@ inline const float Cube::vertices[] = {
 #endif
 
 ======================================================================
-*** FILE: world_objects\Line.h ***
-======================================================================
-
-#ifndef LINE_H
-#define LINE_H
-
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <string>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include <vector>
-#include "world_objects/Object.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-using namespace glm;
-
-class Line : public Object
-{
-private:
-    unsigned int vao = 0;
-    unsigned int vbo = 0;
-    std::vector<vec3> points;
-    float line_thickness = 5.f;
-
-public:
-    Line(std::vector<vec3> points, float line_thickness = 3.f)
-        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
-    { render_to_world_pos = false; points.clear(); }
-    
-    Line(float line_thickness = 3.f)
-        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
-    { render_to_world_pos = false; points.clear(); }
-
-    void construct() override {
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-        glEnableVertexAttribArray(0);
-        glBindVertexArray(0);
-    }
-
-    void render() override {
-        if (!visible) return;
-        
-        if (points.size() < 2) return;
-       
-        //glDisable(GL_DEPTH_TEST);
-
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec3), points.data(), GL_DYNAMIC_DRAW);
-
-        glLineWidth(line_thickness);
-        
-        glDrawArrays(GL_LINE_STRIP, 0, points.size());
-       
-        glBindVertexArray(0);
-        //glEnable(GL_DEPTH_TEST);
-    }
-
-    void add_point(vec3 p) { points.push_back(p); }
-    void add_points(std::vector<vec3> new_points) { for (auto p : new_points) points.push_back(p); }
-    void set_points(std::vector<vec3> new_points) { this->points = new_points; }
-    void clear_points() { points.clear(); }
-    int get_point_num() { return points.size(); }
-    std::vector<vec3> get_points() { return points; }
-    vec3 get_last_point() { return points.back(); }
-
-    ~Line() override {
-        glDeleteVertexArrays(1, &vao);
-        glDeleteBuffers(1, &vbo);
-    }
-};
-
-#endif 
-
-======================================================================
-*** FILE: world_objects\Line2D.h ***
-======================================================================
-
-#ifndef LINE2D_H
-#define LINE2D_H
-
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <string>
-#include <fstream>
-#include <sstream>
-#include <iostream>
-#include <vector>
-#include "world_objects/Object.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-using namespace glm;
-
-class Line2D : public Object
-{
-private:
-    unsigned int vao = 0;
-    unsigned int vbo = 0;
-    std::vector<vec2> points;
-    float line_thickness = 5.f;
-
-public:
-    Line2D(std::vector<vec2> points, float line_thickness = 3.f)
-        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
-    { render_to_world_pos = false; points.clear(); }
-    
-    Line2D(float line_thickness = 3.f)
-        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
-    { render_to_world_pos = false; points.clear(); }
-
-    void construct() override {
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
-        glEnableVertexAttribArray(0);
-        glBindVertexArray(0);
-    }
-
-    void render() override {
-        if (!visible) return;
-        if (points.size() < 2) return;
-       
-        //glDisable(GL_DEPTH_TEST);
-
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(glm::vec2), points.data(), GL_DYNAMIC_DRAW);
-
-        glLineWidth(line_thickness);
-        
-        glDrawArrays(GL_LINE_STRIP, 0, points.size());
-       
-        glBindVertexArray(0);
-        //glEnable(GL_DEPTH_TEST);
-    }
-
-    void add_point(vec2 p) { points.push_back(p); }
-    void add_points(std::vector<vec2> new_points) { for (auto p : new_points) points.push_back(p); }
-    void set_points(std::vector<vec2> new_points) { this->points = new_points; }
-    void clear_points() { points.clear(); }
-    int get_point_num() { return points.size(); }
-    std::vector<vec2> get_points() { return points; }
-    vec2 get_last_point() { return points.back(); }
-
-    ~Line2D() override {
-        glDeleteVertexArrays(1, &vao);
-        glDeleteBuffers(1, &vbo);
-    }
-};
-
-#endif 
-
-======================================================================
 *** FILE: world_objects\Object.h ***
 ======================================================================
 
@@ -5978,7 +6341,7 @@ public:
     void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; render_props_changed = true;  } }
     void set_tint_colour (vec3 new_colour) { tint_colour = vec4(new_colour, 1.f); render_props_changed = true;  }
     void set_tint_colour (vec4 new_colour) { tint_colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a*colour.a; render_props_changed = true; } }
-    virtual void set_texture (Texture *tex) { uses_texture = true; shader->addTexture(tex); shader->use(); shader->setInt("texture", shader->get_last_loaded_tex_slot()); render_props_changed = true; }
+    virtual void set_texture (Texture *tex) { uses_texture = render_props_changed = true; shader->setTexture("Texture", tex); }
     virtual void set_shader (Shader *s) { shader = s; render_props_changed = true; custom_shader = true; }
     void set_screenspace() { is_screen_object = true; }
     void enable_shader() { shader->use(); }

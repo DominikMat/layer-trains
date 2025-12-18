@@ -14,6 +14,7 @@
 #include "TerrainLine.h"
 #include "Interactable.h"
 #include "PathSpacialGrid.h"
+#include "Texture.h"
 #include <set>
 
 using namespace glm;
@@ -52,7 +53,12 @@ protected:
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
 
+    unsigned char* built_path_mask = nullptr;
+    Texture* build_paths_texture = nullptr;
+    int path_mask_x = 0, path_mask_y = 0;
+
 public:
+
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
     
@@ -117,6 +123,117 @@ public:
         return spatial_grid.get_link_at_pos(pos, radius, out_closest_point);
     }
 
+    void init_mask() {
+        path_mask_x = terrain->terrain_data->resolution_x;
+        path_mask_y = terrain->terrain_data->resolution_y;
+
+        // ZMIANA: Mnożymy razy 3 dla formatu RGB (R=Wysokość, G=Pusty, B=Wygląd)
+        int total_size = path_mask_x * path_mask_y * 3;
+        
+        if (built_path_mask) delete[] built_path_mask;
+        built_path_mask = new unsigned char[total_size];
+        memset(built_path_mask, 0, total_size);
+    }
+
+    void build_path(int link_id) {
+        /* find and disable the build path */
+        Line2D* found_line = nullptr;
+
+        for (auto l : links) {
+            if (l.link_id == link_id) {
+                found_line = l.line_obj;
+                break;
+            }
+        }
+
+        if (!found_line) { std::cout << "no link with id: " << link_id << " found to build! " << std::endl; return; }
+        if (!built_path_mask) init_mask();
+        found_line->set_visible(false);
+
+        const std::vector<vec2>& points = found_line->get_points();
+        if (points.size() < 2) return;
+
+        /* Parametry rysowania */
+        const float thickness_px = PATH_THICKNESS; 
+        const float half_thickness = thickness_px / 2.0f;
+        const float dash_length = 0.02f; // Długość kreski w jednostkach lokalnych (dostosuj do skali świata)
+        const float dash_width_px = thickness_px * 0.15f; // Szerokość białej linii to 15% szerokości drogi
+
+        float current_dist_along_path = 0.0f;
+
+        /* 3. Iteracja po odcinkach linii */
+        for (size_t i = 0; i < points.size() - 1; ++i) {
+            vec2 p1 = points[i];
+            vec2 p2 = points[i + 1];
+
+            // Konwersja punktów lokalnych [-0.5, 0.5] na współrzędne pikseli [0, Res]
+            vec2 px_p1 = vec2((p1.x + 0.5f) * path_mask_x, (p1.y + 0.5f) * path_mask_y);
+            vec2 px_p2 = vec2((p2.x + 0.5f) * path_mask_x, (p2.y + 0.5f) * path_mask_y);
+            
+            float segment_len_local = glm::distance(p1, p2);
+            float segment_len_px = glm::distance(px_p1, px_p2);
+
+            // Oblicz Bounding Box dla odcinka (z marginesem na grubość)
+            float min_x = std::min(px_p1.x, px_p2.x) - half_thickness;
+            float max_x = std::max(px_p1.x, px_p2.x) + half_thickness;
+            float min_y = std::min(px_p1.y, px_p2.y) - half_thickness;
+            float max_y = std::max(px_p1.y, px_p2.y) + half_thickness;
+
+            // Clamp do granic tekstury
+            int start_x = std::clamp((int)min_x, 0, path_mask_x - 1);
+            int end_x   = std::clamp((int)max_x, 0, path_mask_x - 1);
+            int start_y = std::clamp((int)min_y, 0, path_mask_y - 1);
+            int end_y   = std::clamp((int)max_y, 0, path_mask_y - 1);
+
+            // Wektory pomocnicze do matematyki odcinka
+            vec2 seg_dir = px_p2 - px_p1;
+            float seg_len_sq = glm::dot(seg_dir, seg_dir);
+
+            /* 4. Rasteryzacja prostokąta */
+            for (int y = start_y; y <= end_y; ++y) {
+                for (int x = start_x; x <= end_x; ++x) {
+                    vec2 pixel_pos = vec2(x, y);
+                    vec2 point_to_pixel = pixel_pos - px_p1;
+                    float t = std::clamp(glm::dot(point_to_pixel, seg_dir) / seg_len_sq, 0.0f, 1.0f);
+
+                    vec2 closest_px = px_p1 + seg_dir * t;
+                    float dist_px = glm::distance(pixel_pos, closest_px);
+
+                    if (dist_px <= half_thickness) {
+                        int idx = (y * path_mask_x + x) * 3;
+                        
+                        // RED: Wysokość (znormalizowana 0.0 - 1.0 lub metry, tu 0-255)
+                        vec2 center_local = vec2((closest_px.x/path_mask_x)-0.5f, (closest_px.y/path_mask_y)-0.5f);
+                        float h = terrain->elevation_line_drawer.get_height_at_local_pos(center_local);
+                        built_path_mask[idx] = (unsigned char)(std::clamp(h, 0.0f, 1.0f) * 255.0f);
+
+                        // GREEN: Dystans od środka (0 = środek, 255 = krawędź)
+                        float dist_norm = dist_px / half_thickness;
+                        built_path_mask[idx + 1] = (unsigned char)(dist_norm * 255.0f);
+
+                        // BLUE: Dystans wzdłuż path (używamy fmod, żeby zmieścić się w 0-255)
+                        // dash_length w jednostkach lokalnych, np. 0.02
+                        float total_local_dist = current_dist_along_path + (t * segment_len_local);
+                        float pattern = fmod(total_local_dist, dash_length * 2.0f) / (dash_length * 2.0f);
+                        built_path_mask[idx + 2] = (unsigned char)(pattern * 255.0f);
+                    }
+                }
+            }
+            // Zwiększamy dystans o długość właśnie narysowanego odcinka
+            current_dist_along_path += segment_len_local;
+        }
+
+        /* 5. Generowanie tekstury RGB */
+        if (build_paths_texture) delete build_paths_texture;
+        
+        // ZMIANA: Ostatni argument to 3 (kanały RGB)
+        build_paths_texture = new Texture(path_mask_x, path_mask_y, built_path_mask, 3);
+    }
+    void set_built_path_mask(Shader* terrain_shader) {
+        if (build_paths_texture) {
+            terrain_shader->setTexture("built_path_mask", build_paths_texture);
+        }
+    }
 };
 
 #endif

@@ -10,6 +10,7 @@ uniform mat4 view;
 uniform mat4 projection;
 
 uniform sampler2D heightmap;
+uniform sampler2D built_path_mask;
 uniform bool heightmap_enabled;
 uniform float heightmap_scale;
 uniform int heightmap_resolution_x = 1024;
@@ -19,18 +20,22 @@ void main()
 {
     vec3 position = aPos;
     
-    if (heightmap_enabled) { 
-        vec2 texCoord = aTexCoord;
-        
+    if (heightmap_enabled) {    
         // handle boundary
         float heightmap_step_x = 1.f / heightmap_resolution_x;
         float heightmap_step_y = 1.f / heightmap_resolution_y;
-        if (texCoord.x < heightmap_step_x || texCoord.x > 1.f - heightmap_step_x
-            || texCoord.y < heightmap_step_y || texCoord.y > 1.f - heightmap_step_y) {
+        if (aTexCoord.x < heightmap_step_x || aTexCoord.x > 1.f - heightmap_step_x
+            || aTexCoord.y < heightmap_step_y || aTexCoord.y > 1.f - heightmap_step_y) {
             position.z = 0.f;
         } else {
-            position.z = texture(heightmap, texCoord).x * heightmap_scale;
+            position.z = texture(heightmap, aTexCoord).x * heightmap_scale;
         }
+
+        /* apply height from built road mask if needed */
+        float local_road = texture(built_path_mask, aTexCoord).r;
+        if (local_road > 0.001f) {
+            position.z = local_road;
+        }     
     } 
 
     v_worldPos = (transform * vec4(position, 1.0)).xyz;

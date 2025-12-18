@@ -129,9 +129,7 @@ public:
     void set_texture(Texture *tex) override { 
         active_texture = tex;
         uses_texture = true;
-        shader->addTexture(tex); 
-        shader->use(); 
-        shader->setInt("image", shader->get_last_loaded_tex_slot()); 
+        shader->setTexture("image", tex); 
         render_props_changed = true; 
     }
 

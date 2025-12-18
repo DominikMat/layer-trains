@@ -27,9 +27,7 @@ public:
     
     static Shader& get_terrain_shader(Texture *heightmap_tex, float heightmap_scale, Texture *texture = &TEXTURE_MISSING) {
         static Shader shader = Shader(VERTEX_TERRAIN_PATH, FRAGMENT_TERRAIN_PATH);
-        shader.use();
-        shader.addTexture(texture); shader.setInt("texture", shader.get_last_loaded_tex_slot());
-        shader.addTexture(heightmap_tex); shader.setInt("heightmap", shader.get_last_loaded_tex_slot());
+        shader.setTexture("heightmap", new TEXTURE_EMPTY);
         return shader;
     }
     

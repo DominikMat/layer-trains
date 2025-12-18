@@ -53,6 +53,10 @@ uniform float snow_max_steepness;
 uniform vec3 reference_point_pos;
 uniform bool draw_reference;
 
+// --- Terrain path mask and drawing ---
+uniform sampler2D built_path_mask;
+uniform vec3 path_colour = vec3(1.f,1.f,1.f);
+
 /* Colours */
 const vec3 cursor_colour = vec3(0.0, 0.2, 1.0); // blue
 const vec3 reference_colour = vec3(1.0,89/255.f,0); // 'rgba(255, 89, 0, 1)'
@@ -128,6 +132,29 @@ void main(){
         
         if (steepness < 0.001) total_line = 0.0;
         colour = mix(colour, iso_line_colour.rgb, total_line*iso_line_colour.a);
+    }
+
+    /* Draw roads */
+    vec3 road_data = texture(built_path_mask, TexCoord).rgb;
+    if (road_data.r > 0.001) {
+        float dist_from_center = road_data.g; // 0..1
+        float path_progress = road_data.b;    // 0..1 (fmod wyniku)
+
+        // Wyostrzanie krawędzi drogi (SDF style)
+        float road_mask = 1.0 - smoothstep(0.9, 1.0, dist_from_center);
+        
+        // Obliczanie przerywanej linii
+        // path_progress < 0.5 to kreska, > 0.5 to przerwa
+        bool is_dash = path_progress < 0.5;
+        bool is_center = dist_from_center < 0.15;
+        
+        vec3 base_road_col = path_colour; // Asfalt
+        if (is_dash && is_center) {
+            base_road_col = vec3(1.0); // Biała linia
+        }
+        
+        // Mix z kolorem terenu na krawędziach dla gładkości
+        colour = mix(colour, base_road_col, road_mask);
     }
 
     /* Draw mouse cursor on Terrain */

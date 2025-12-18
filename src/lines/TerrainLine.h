@@ -25,7 +25,7 @@ public:
         shader->setVec3("min_steepness_colour", Colour::BLUE );
         shader->setBool("show_steepness", true);
         
-        shader->addTexture(new Texture(td->heightmap_path,true,true)); shader->setInt("heightmap", shader->get_last_loaded_tex_slot());
+        shader->setTexture("heightmap", new Texture(td->heightmap_path,true,true));
         shader->setFloat("heightmap_scale", td->vertical_scale);
         shader->setFloat("steepness_scale", STEEPNESS_SCALE);
         shader->setInt("heightmap_resolution_x", td->resolution_x);

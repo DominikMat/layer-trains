@@ -65,7 +65,7 @@ public:
     }
 
     // generate from raw data
-    Texture(int _width, int _height, const unsigned char* data) : width(_width), height(_height)
+    Texture(int _width, int _height, const unsigned char* data, int colour_channels=3) : width(_width), height(_height)
     {
         glGenTextures(1, &ID);
         glBindTexture(GL_TEXTURE_2D, ID);
@@ -75,8 +75,18 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+        if (colour_channels == 3){
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        }
+        else if (colour_channels == 1) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+        }
+        else {
+            std::cout << "Colour channel number not supported!" << std::endl;
+            return;
+        }
+
         glGenerateMipmap(GL_TEXTURE_2D);
     }
 
@@ -92,6 +102,11 @@ public:
         glBindTexture(GL_TEXTURE_2D, ID);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, property);	
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, property);
+    }
+
+    /* static functions */
+    static Texture* merge (Texture* tex_a, Texture* tex_b) {
+        return tex_b;
     }
 };
 #endif

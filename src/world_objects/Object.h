@@ -89,7 +89,7 @@ public:
     void set_colour (vec4 new_colour) { colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a; render_props_changed = true;  } }
     void set_tint_colour (vec3 new_colour) { tint_colour = vec4(new_colour, 1.f); render_props_changed = true;  }
     void set_tint_colour (vec4 new_colour) { tint_colour = new_colour; if (new_colour.a !=1.f) { opacity = new_colour.a*colour.a; render_props_changed = true; } }
-    virtual void set_texture (Texture *tex) { uses_texture = true; shader->addTexture(tex); shader->use(); shader->setInt("texture", shader->get_last_loaded_tex_slot()); render_props_changed = true; }
+    virtual void set_texture (Texture *tex) { uses_texture = render_props_changed = true; shader->setTexture("Texture", tex); }
     virtual void set_shader (Shader *s) { shader = s; render_props_changed = true; custom_shader = true; }
     void set_screenspace() { is_screen_object = true; }
     void enable_shader() { shader->use(); }
