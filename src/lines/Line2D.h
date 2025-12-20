@@ -46,6 +46,7 @@ public:
         if (!visible) return;
         if (points.size() < 2) return;
        
+       
         //glDisable(GL_DEPTH_TEST);
 
         glBindVertexArray(vao);

@@ -39,7 +39,6 @@ public:
             if (!data) { std::cout << "Failed to load 16bit texture" << std::endl; return; }
             this->width = width;
             this->height = height;
-
             glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, data);
             glGenerateMipmap(GL_TEXTURE_2D);
             stbi_image_free(data);
@@ -81,6 +80,30 @@ public:
         }
         else if (colour_channels == 1) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+        }
+        else {
+            std::cout << "Colour channel number not supported!" << std::endl;
+            return;
+        }
+
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    Texture(int _width, int _height, const unsigned short* data, int colour_channels=3) : width(_width), height(_height)
+    {
+        glGenTextures(1, &ID);
+        glBindTexture(GL_TEXTURE_2D, ID);
+
+        // Ustawienie parametrów
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // Użyj CLAMP dla map
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        if (colour_channels == 3){
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16, width, height, 0, GL_RGB, GL_UNSIGNED_SHORT, data);
+        }
+        else if (colour_channels == 1) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, data);
         }
         else {
             std::cout << "Colour channel number not supported!" << std::endl;

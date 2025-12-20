@@ -71,11 +71,15 @@ public:
     }
 
     /* local position is [-.5,.5] terrain position */
-    float get_height_at_local_pos(float x, float y) {
+    float get_height_at_local_pos_normalized(float x, float y) {
         if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
-        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
+        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height);
+    }
+    float get_height_at_local_pos(float x, float y) {
+        return get_height_at_local_pos_normalized(x,y) * heightmap_scale;
     }
     float get_height_at_local_pos(vec2 p) { return get_height_at_local_pos(p.x,p.y); }
+    float get_height_at_local_pos_normalized(vec2 p) { return get_height_at_local_pos_normalized(p.x,p.y); }
     
     glm::vec3 get_local_pos_from_uv(float u, float v) {
         u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);
@@ -124,7 +128,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
             }
 
             vec2 dir_to_target = normalize(end - current_pos);
-            float current_h = get_height_at_local_pos(current_pos.x, current_pos.y);
+            float current_h = get_height_at_local_pos(current_pos);
 
             float best_dist_score = FLT_MAX;
             vec2 best_next_pos = current_pos;
@@ -144,7 +148,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
                 
                 if (abs(candidate_pos.x) > 0.5f || abs(candidate_pos.y) > 0.5f) continue;
 
-                float candidate_h = get_height_at_local_pos(candidate_pos.x, candidate_pos.y);
+                float candidate_h = get_height_at_local_pos(candidate_pos);
                 float height_diff = candidate_h - current_h;
                 float actual_slope = height_diff / step;
 
@@ -205,7 +209,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
             }
 
             vec2 dir_to_target = normalize(end - current_pos);
-            float current_h = get_height_at_local_pos(current_pos.x, current_pos.y);
+            float current_h = get_height_at_local_pos(current_pos);
 
             float best_score = FLT_MAX;
             vec2 best_next_pos = current_pos + dir_to_target * step;
@@ -223,7 +227,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
                 
                 if (abs(candidate_pos.x) > 0.5f || abs(candidate_pos.y) > 0.5f) continue;
 
-                float candidate_h = get_height_at_local_pos(candidate_pos.x, candidate_pos.y);
+                float candidate_h = get_height_at_local_pos(candidate_pos);
                 float height_diff = candidate_h - current_h;
                 float actual_slope = abs(height_diff / step); // Absolute slope
 

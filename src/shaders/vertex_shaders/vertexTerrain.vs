@@ -32,9 +32,9 @@ void main()
         }
 
         /* apply height from built road mask if needed */
-        float local_road = texture(built_path_mask, aTexCoord).r;
-        if (local_road > 0.001f) {
-            position.z = local_road;
+        vec3 local_road = texture(built_path_mask, aTexCoord).rgb;
+        if (local_road.g > 0.25f) {
+            position.z = local_road.r * heightmap_scale;
         }     
     } 
 

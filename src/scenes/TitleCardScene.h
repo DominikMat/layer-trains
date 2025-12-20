@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "UIList.h"
 #include "TextButton.h"
+#include "BezierLine2D.h"
 
 class TitleCardScene : public Scene
 {
@@ -20,6 +21,7 @@ private:
     UIText *title_display;
     TextButton *credits_text;
     TextButton *start_program_button;
+    BezierLine2D *bezier;
     bool end_scene_flag = false;
     float end_scene_timer = 0.5;
 
@@ -46,6 +48,9 @@ public:
         menu_list->add_item( start_program_button );
         menu_list->add_item( credits_text );
         screen_ui->place( menu_list );
+        
+        bezier = new BezierLine2D(vec2(0.2f), vec2(0.2,0.8), vec2(0.8f), 10);
+        world->place( bezier );
     }
     
     void loop(float dt) override {

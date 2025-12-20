@@ -53,7 +53,7 @@ protected:
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
 
-    unsigned char* built_path_mask = nullptr;
+    unsigned short* built_path_mask = nullptr;
     Texture* build_paths_texture = nullptr;
     int path_mask_x = 0, path_mask_y = 0;
 
@@ -131,8 +131,8 @@ public:
         int total_size = path_mask_x * path_mask_y * 3;
         
         if (built_path_mask) delete[] built_path_mask;
-        built_path_mask = new unsigned char[total_size];
-        memset(built_path_mask, 0, total_size);
+        built_path_mask = new unsigned short[total_size];
+        memset(built_path_mask, 0, total_size*2);
     }
 
     void build_path(int link_id) {
@@ -154,7 +154,7 @@ public:
         if (points.size() < 2) return;
 
         /* Parametry rysowania */
-        const float thickness_px = PATH_THICKNESS; 
+        const float thickness_px = PATH_BUILT_THICKNESS; 
         const float half_thickness = thickness_px / 2.0f;
         const float dash_length = 0.02f; // Długość kreski w jednostkach lokalnych (dostosuj do skali świata)
         const float dash_width_px = thickness_px * 0.15f; // Szerokość białej linii to 15% szerokości drogi
@@ -204,18 +204,18 @@ public:
                         
                         // RED: Wysokość (znormalizowana 0.0 - 1.0 lub metry, tu 0-255)
                         vec2 center_local = vec2((closest_px.x/path_mask_x)-0.5f, (closest_px.y/path_mask_y)-0.5f);
-                        float h = terrain->elevation_line_drawer.get_height_at_local_pos(center_local);
-                        built_path_mask[idx] = (unsigned char)(std::clamp(h, 0.0f, 1.0f) * 255.0f);
+                        float h = terrain->elevation_line_drawer.get_height_at_local_pos_normalized(center_local);
+                        built_path_mask[idx] = (unsigned short)(std::clamp(h, 0.0f, 1.0f) * 65535.0f);
 
-                        // GREEN: Dystans od środka (0 = środek, 255 = krawędź)
-                        float dist_norm = dist_px / half_thickness;
-                        built_path_mask[idx + 1] = (unsigned char)(dist_norm * 255.0f);
+                        // GREEN: Dystans od środka (1 = środek, 0 = krawędź)
+                        float dist_norm = glm::clamp(1.f - dist_px / (thickness_px), 0.f, 1.f);
+                        built_path_mask[idx + 1] = (unsigned short)(dist_norm * 65535.0f);
 
                         // BLUE: Dystans wzdłuż path (używamy fmod, żeby zmieścić się w 0-255)
                         // dash_length w jednostkach lokalnych, np. 0.02
                         float total_local_dist = current_dist_along_path + (t * segment_len_local);
                         float pattern = fmod(total_local_dist, dash_length * 2.0f) / (dash_length * 2.0f);
-                        built_path_mask[idx + 2] = (unsigned char)(pattern * 255.0f);
+                        built_path_mask[idx + 2] = (unsigned short)(pattern * 65535.0f);
                     }
                 }
             }

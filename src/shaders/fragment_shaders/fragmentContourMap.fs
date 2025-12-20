@@ -136,17 +136,17 @@ void main(){
 
     /* Draw roads */
     vec3 road_data = texture(built_path_mask, TexCoord).rgb;
-    if (road_data.r > 0.001) {
+    if (road_data.r > 0) {
         float dist_from_center = road_data.g; // 0..1
         float path_progress = road_data.b;    // 0..1 (fmod wyniku)
 
         // Wyostrzanie krawędzi drogi (SDF style)
-        float road_mask = 1.0 - smoothstep(0.9, 1.0, dist_from_center);
+        //float road_mask = smoothstep(0.9, 1.0, dist_from_center+1.f );
         
         // Obliczanie przerywanej linii
         // path_progress < 0.5 to kreska, > 0.5 to przerwa
         bool is_dash = path_progress < 0.5;
-        bool is_center = dist_from_center < 0.15;
+        bool is_center = dist_from_center > 1.f-0.15;
         
         vec3 base_road_col = path_colour; // Asfalt
         if (is_dash && is_center) {
@@ -154,7 +154,7 @@ void main(){
         }
         
         // Mix z kolorem terenu na krawędziach dla gładkości
-        colour = mix(colour, base_road_col, road_mask);
+        colour = mix(colour, base_road_col, 1.f);
     }
 
     /* Draw mouse cursor on Terrain */

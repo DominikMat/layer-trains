@@ -99,7 +99,7 @@ public:
         // handle shader and camera 
         terrain_shader = &ShaderManager::get_terrain_shader(&heightmap_texture, terrain_data->vertical_scale, &generated_texture);
         terrain_shader->config_worldpos_buffer();
-        camera->set_orthographic(terrain_shader);
+        //camera->set_orthographic(terrain_shader);
         terrain_obj->set_shader(terrain_shader);
         
         // Standard Orientation: Rotated -45 degrees on X, Scaled up 3x

@@ -128,7 +128,7 @@ public:
             vec2 path_closest_point;
             int link_id = path_system->get_link_at_pos(mouse_terrain_local_pos, CURSOR_OUTER_RADIUS, path_closest_point);
             if (!path_click_menu->visible && link_id != -1){
-                float local_height = terrain->elevation_line_drawer.get_height_at_local_pos(path_closest_point.x,path_closest_point.y);
+                float local_height = terrain->elevation_line_drawer.get_height_at_local_pos(path_closest_point);
                 vec4 path_world_pos = terrain->terrain_obj->get_transform() * vec4(path_closest_point, local_height, 1.f);
                 click_menu_link_id_selected = link_id;
                 click_menu_change_visible(path_click_menu, true, vec3(path_world_pos), vec3(path_closest_point,local_height));
