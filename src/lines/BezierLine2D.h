@@ -15,7 +15,16 @@
 
 using namespace glm;
 
-class BezierLine2D : public Object
+class Curve2D {
+public:
+    // return the position of the curve at paramter t (0->1)
+    virtual vec2 get_curve_position(float t) = 0;
+    
+    // return the normal direction of the curve at paramter t (0->1)
+    virtual vec2 get_curve_normal(float t) = 0;
+};
+
+class BezierLine2D : public UIObject, public Curve2D
 {
 private:
     unsigned int vao = 0;
@@ -24,11 +33,10 @@ private:
     std::vector<vec2> control_points;
     std::vector<vec2> render_points;
     float line_thickness = 5.f;
-    bool points_changed = false;
 
 public:
     BezierLine2D(vec2 point1, vec2 control, vec2 point2, float line_thickness = 3.f, vec3 line_colour = Colour::WHITE)
-        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
+        : UIObject(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
     { 
         render_to_world_pos = false;
         set_segment(point1, control, point2);
@@ -36,7 +44,7 @@ public:
     }
     
     BezierLine2D(float line_thickness = 3.f)
-        : Object(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
+        : UIObject(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
     { render_to_world_pos = false; points.clear(); }
 
     void construct() override {
@@ -51,7 +59,6 @@ public:
 
     void render() override {
         if (!visible) return;
-        if (points_changed) regenerate_bezier();
 
         if (render_points.size() < 2) return;
        
@@ -112,18 +119,43 @@ public:
         std::vector<vec2> new_control_point = {c};
         points = new_points;
         control_points = new_control_point;
-        points_changed = true;
+        regenerate_bezier();
     }
     void add_segment(vec2 c, vec2 p) {
         points.push_back(p);
         control_points.push_back(c);
-        points_changed = true;
+        regenerate_bezier();
     }
 
-    void clear_points() { points.clear(); control_points.clear(); points_changed = true; }
+    void clear_points() { points.clear(); control_points.clear(); }
     int get_point_num() { return points.size() + control_points.size(); }
     std::vector<vec2> get_points() { return points; }
     std::vector<vec2> get_control_points() { return control_points; }
+
+    vec2 get_curve_position(float t) override {
+        if (render_points.size() == 0) return vec2(0);
+
+        float t_point = glm::clamp(t, 0.f, 1.f) * (render_points.size()-1);
+        int point_idx = t_point;
+        float fract = t_point - point_idx;
+
+        if (point_idx == render_points.size()-1) return render_points[point_idx];
+        else {
+            return render_points[point_idx]*(1.f-fract) + render_points[point_idx+1]*fract;
+        }
+    }
+
+    vec2 get_curve_normal(float t) override {
+        if (render_points.size() < 2) return vec2(0, 1);
+
+        int point_idx = glm::clamp(t, 0.f, 1.f) * (render_points.size() - 1); // last point 
+        if (point_idx == render_points.size()-1) point_idx--; // dont use last point, use prev normal
+
+        vec2 p1 = render_points[point_idx];
+        vec2 p2 = render_points[point_idx + 1];
+        vec2 tangent = glm::normalize(p2 - p1);
+        return vec2(-tangent.y, tangent.x);
+    }
 
     ~BezierLine2D() override {
         glDeleteVertexArrays(1, &vao);

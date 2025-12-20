@@ -6,13 +6,12 @@
 #include <map>
 #include <string>
 #include <iostream>
-
 #include <ft2build.h>
 #include FT_FREETYPE_H
-
 #include "UIObject.h"
 #include "Shader.h"
-
+#include "BezierLine2D.h" // for Curve2D interface
+  
 struct Character {
     unsigned int TextureID;  
     glm::ivec2   Size;       
@@ -29,6 +28,9 @@ private:
     
     static std::map<GLchar, Character> Characters;
     static bool isFontLoaded;
+
+    bool on_curve = false;
+    Curve2D* curve = nullptr;
 
 public:
     UIText(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK)
@@ -95,31 +97,60 @@ public:
 
         glBindVertexArray(VAO);
 
-        float x = -size.x/2.f;
-        float y = -size.y / 2.0f + height_below_writing_line; 
-
-        std::string::const_iterator c;
-        for (c = textString.begin(); c != textString.end(); c++) 
+        // Cursor for standard linear text
+        float cursor_x = -size.x/2.f;
+        float cursor_y = -size.y / 2.0f + height_below_writing_line; 
+        
+        for (int i=0; i < textString.size(); i++) 
         {
-            Character ch = Characters[*c];
+            GLchar c = textString.at(i);
+            Character ch = Characters[c];
 
-            float xpos = x + ch.Bearing.x * font_scale;
-            float ypos = y - (ch.Size.y - ch.Bearing.y) * font_scale;
-
+            // 1. Calculate Local Offsets (relative to the anchor point of the letter)
             float w = ch.Size.x * font_scale;
             float h = ch.Size.y * font_scale;
+            float x_rel = ch.Bearing.x * font_scale;
+            float y_rel = (ch.Bearing.y - ch.Size.y) * font_scale;
 
+            // Define the 4 corners relative to the specific character's anchor
+            vec2 local_verts[4] = {
+                { x_rel,     y_rel + h }, // TL
+                { x_rel,     y_rel     }, // BL
+                { x_rel + w, y_rel     }, // BR
+                { x_rel + w, y_rel + h }  // TR
+            };
+            vec2 final_pos[4];
 
+            // 2. Apply Transformation
+            if (on_curve) {
+                float t = (float)i / (textString.size() - 1);
+                
+                // Get Curve Data
+                vec2 p = curve->get_curve_position(t) - vec2(size)/2.f;
+                vec2 normal = curve->get_curve_normal(t);
+                vec2 tangent = vec2(normal.y, -normal.x); // Rotate normal -90 deg
 
-            // Z is kept at 0.0f because the Object transform handles 3D placement
+                // Rotate Local Offsets + Add Curve Position
+                for(int k=0; k<4; k++) {
+                    final_pos[k] = p + (tangent * local_verts[k].x) + (normal * local_verts[k].y);
+                }
+            } 
+            else {
+                // Standard Linear Placement
+                for(int k=0; k<4; k++) {
+                    final_pos[k] = vec2(cursor_x, cursor_y) + local_verts[k];
+                }
+            }
+
+            // 3. Map to GL_TRIANGLES (using the transformed positions)
             float vertices[6][4] = {
-                { xpos,     ypos + h,   0.0f, 0.0f },            
-                { xpos,     ypos,       0.0f, 1.0f },
-                { xpos + w, ypos,       1.0f, 1.0f },
+                { final_pos[0].x, final_pos[0].y,   0.0f, 0.0f },
+                { final_pos[1].x, final_pos[1].y,   0.0f, 1.0f },
+                { final_pos[2].x, final_pos[2].y,   1.0f, 1.0f },
 
-                { xpos,     ypos + h,   0.0f, 0.0f },
-                { xpos + w, ypos,       1.0f, 1.0f },
-                { xpos + w, ypos + h,   1.0f, 0.0f }           
+                { final_pos[0].x, final_pos[0].y,   0.0f, 0.0f },
+                { final_pos[2].x, final_pos[2].y,   1.0f, 1.0f },
+                { final_pos[3].x, final_pos[3].y,   1.0f, 0.0f }
             };
 
             glBindTexture(GL_TEXTURE_2D, ch.TextureID);
@@ -129,13 +160,12 @@ public:
 
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            x += (ch.Advance >> 6) * font_scale; 
+            cursor_x += (ch.Advance >> 6) * font_scale; 
         }
         
         glBindVertexArray(0);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
-
     void disable_render_properties() override {
         shader->setBool("isText", false);   
     }
@@ -183,6 +213,11 @@ public:
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.y), V3_Y);
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.z), V3_Z);
         local_transform_matrix = glm::scale(local_transform_matrix, vec3(1.f));
+    }
+
+    void place_on_curve(Curve2D *curve) {
+        on_curve = true;
+        this->curve = curve;
     }
 };
 

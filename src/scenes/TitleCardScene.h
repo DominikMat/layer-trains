@@ -21,7 +21,10 @@ private:
     UIText *title_display;
     TextButton *credits_text;
     TextButton *start_program_button;
+
     BezierLine2D *bezier;
+    UIText *bezier_text;
+
     bool end_scene_flag = false;
     float end_scene_timer = 0.5;
 
@@ -49,8 +52,10 @@ public:
         menu_list->add_item( credits_text );
         screen_ui->place( menu_list );
         
-        bezier = new BezierLine2D(vec2(0.2f), vec2(0.2,0.8), vec2(0.8f), 10);
-        world->place( bezier );
+        Curve2D* bezier_curve = new BezierLine2D(vec2(400), vec2(550,525), vec2(700, 500));
+        bezier_text = new UIText("bezier curvy :)", .75f, Colour::WHITE);
+        bezier_text->place_on_curve(bezier_curve);
+        screen_ui->place( bezier_text );
     }
     
     void loop(float dt) override {
