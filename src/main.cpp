@@ -99,6 +99,9 @@ int main() {
                 return 0;
             }
         }
+
+        int next_id = current_scene->get_next_scene_id();
+        if (next_id != -1) i = next_id-1; // will be incremented in for loop
     }
     
     glfwTerminate();

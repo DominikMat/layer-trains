@@ -14,19 +14,21 @@ class TitleCardScene : public Scene
 {
 private:
     enum ButtonID {
-        PROGRAM_START=0, CREDITS=1
+        PROGRAM_START, CREDITS, MAP_EDITOR_START
     };
 
     UIList *menu_list;
     UIText *title_display;
     TextButton *credits_text;
     TextButton *start_program_button;
+    TextButton* map_editor_button;
 
     BezierLine2D *bezier;
     UIText *bezier_text;
 
     bool end_scene_flag = false;
     float end_scene_timer = 0.5;
+    int next_scene_id = 0;
 
 public:
     TitleCardScene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih) {
@@ -46,9 +48,11 @@ public:
         menu_list->set_anchor( UIAnchor::TOP_LEFT, vec2(20,-20) );
         title_display = new UIText("Layer Trains Prototype ;)", 1.15f, Colour::WHITE);
         start_program_button = new TextButton("start", 0.75f, Colour::WHITE, ButtonID::PROGRAM_START,false);
+        map_editor_button = new TextButton("map editor", 0.75f, Colour::WHITE, ButtonID::MAP_EDITOR_START,false);
         credits_text = new TextButton("credits", 0.75f, Colour::WHITE, ButtonID::CREDITS,false);
         menu_list->add_item( title_display );
         menu_list->add_item( start_program_button );
+        menu_list->add_item( map_editor_button );
         menu_list->add_item( credits_text );
         screen_ui->place( menu_list );
         
@@ -61,20 +65,31 @@ public:
     void loop(float dt) override {
         /* end scene logic */
         if (end_scene_flag) end_scene_timer -= dt;
-        if (end_scene_timer <= 0.f) end_scene();
+        if (end_scene_timer <= 0.f) end_scene(next_scene_id);
     }
 
     void on_ui_button_clicked(int button_id, bool state) {
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << state << std::endl;
 
-        if (button_id == ButtonID::PROGRAM_START) { 
-            start_program_button->set_text("loading ...");
-            menu_list->recalculate_layout();
-            end_scene_flag = true;
-        }
-        if (button_id == ButtonID::CREDITS) {
-            credits_text->set_text("made by Dominik Mat <3");
-            menu_list->recalculate_layout();
+        switch(button_id) {
+            case ButtonID::PROGRAM_START:
+                start_program_button->set_text("loading ...");
+                menu_list->recalculate_layout();
+                end_scene_flag = true;
+                next_scene_id = 1;
+                break;
+        
+            case ButtonID::CREDITS:
+                credits_text->set_text("made by Dominik Mat <3");
+                menu_list->recalculate_layout();
+                break;
+        
+            case ButtonID::MAP_EDITOR_START:
+                map_editor_button->set_text("loading ...");
+                menu_list->recalculate_layout();
+                end_scene_flag = true;
+                next_scene_id = 1;
+                break;       
         }
     }
 };

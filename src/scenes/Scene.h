@@ -11,7 +11,7 @@
 
 class Scene
 {
-public:
+protected:
     World *world;
     Camera *camera;
     ScreenUI *screen_ui;
@@ -21,6 +21,10 @@ public:
     bool is_active = true;
     vec4 background_colour = Colour::DEFAULT_RENDER_BACKGROUND;
 
+    int next_scene_id = -1;
+    
+public:
+
     Scene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) 
         : world(w), camera(c), screen_ui(s), user_input(ih) {}
 
@@ -28,7 +32,8 @@ public:
     virtual void loop(float dt) = 0;
     
     bool active() { return is_active; }
-    void end_scene() { is_active = false; }
+    void end_scene(int next_scene_id = -1) { is_active = false; this->next_scene_id = next_scene_id; }
+    int get_next_scene_id() { return next_scene_id; }
 
     virtual Shader* get_world_pos_buffer_shader() { return NULL; }
     
