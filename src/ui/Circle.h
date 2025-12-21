@@ -63,7 +63,7 @@ public:
     }
 
     void render() override {
-        if (!visible) return;
+        if (!can_render()) return;
         glBindVertexArray(VAO);
         // Render Triangle Fan (Center + perimeter vertices)
         glDrawArrays(GL_TRIANGLE_FAN, 0, segments + 2);

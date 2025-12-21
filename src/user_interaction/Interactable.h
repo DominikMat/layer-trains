@@ -90,7 +90,7 @@ class Interactable : public Object {
         //glDepthMask(GL_TRUE);
     }
     void render () override {
-        if (disabled) return
+        if (!can_render()) return
         render_sphere.set_position(position);
         render_sphere.set_size(size);
         render_sphere.render();
@@ -100,6 +100,10 @@ class Interactable : public Object {
     }
     int get_id() override { return id; }
     void set_id(int new_id) { id = new_id; }
+
+    bool can_render() override {
+        return Object::can_render() && !disabled;
+    }
 
     void disable() { disabled = true; }
     void enable() { disabled = false; }

@@ -93,7 +93,7 @@ public:
     }
 
     void render() override {
-        if (!visible) return;
+        if (!can_render()) return;
 
         glBindVertexArray(VAO);
 

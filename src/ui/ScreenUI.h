@@ -113,6 +113,10 @@ public:
             object_ptr->update_screen_size(scr_width, scr_height);
         }
     }
+
+    void update_animations(float dt) {
+        for (auto obj : objects) obj->update_animations(dt);
+    }
 };
 
 #endif // ScreenUI_H

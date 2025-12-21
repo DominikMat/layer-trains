@@ -3,6 +3,7 @@
 ======================================================================
 
 #include <iostream>
+#include <unordered_map>
 #include "rendering/Window.h"
 
 InputHandler* InputHandler::instance = nullptr; 
@@ -31,15 +32,17 @@ int main() {
     // ==========================================================
     /* Create scenes */
 
-    const vector<Scene*> scenes = {
-        new TitleCardScene( &world, &camera, &screen_ui, &input_handler),
-        new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler)
+    const std::unordered_map<int, Scene*> scenes = {
+        { SceneID::TITLE_CARD, new TitleCardScene( &world, &camera, &screen_ui, &input_handler) },
+        { SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
     };
 
     // ==========================================================
     /* Render Loop */
 
-    for (int i=1; i<scenes.size(); i++){
+    int current_id = SceneID::TITLE_CARD; // Start with the first scene ID
+
+    while (current_id != -1 && scenes.count(current_id) > 0) {
         // remove previous scene objects
         screen_ui.clear_objects();
         world.clear_objects();
@@ -47,8 +50,8 @@ int main() {
 
         // init current scene
         std::cout << std::endl << std::endl << "=============================" << std::endl 
-            << "Starting scene nr " << (i+1) << std::endl << "=============================" << std::endl;
-        Scene* current_scene = scenes[i];
+            << "Starting scene nr " << (current_id) << std::endl << "=============================" << std::endl;
+        Scene* current_scene = scenes.at(current_id);
         current_scene->init();
         Shader *world_pos_buffer_shader = current_scene->get_world_pos_buffer_shader();
         vec4 bg_col = current_scene->get_background_colour();
@@ -92,6 +95,7 @@ int main() {
             world.render();
 
             if (prev_window_size != window_size) screen_ui.set_new_window_size(window_size.x, window_size.y);
+            screen_ui.update_animations(dt);
             screen_ui.render();
             
             window.display(); 
@@ -103,11 +107,304 @@ int main() {
                 return 0;
             }
         }
+
+        int next_id = current_scene->get_next_scene_id();
+        if (next_id != -1 && scenes.count(next_id) > 0) current_id = next_id;
+        else {
+            std::cout<< "No scene found with ID=" << next_id << ", exiting application" << std::endl;
+            break;
+        }
     }
     
     glfwTerminate();
     return 0;
 }
+
+======================================================================
+*** FILE: animation\Animation.h ***
+======================================================================
+
+#ifndef ANIMATION_H
+#define ANIMATION_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+enum AnimationPreset {
+    ENTRY_LEFT, ENTRY_RIGHT, ENTRY_TOP, ENTRY_BOTTOM, 
+    FADE_IN, FADE_OUT
+};
+
+enum AnimationSmoothing {
+    LINEAR, EASY_IN, EASY_OUT, OVERSHOOT
+};
+
+class Animation
+{
+private:
+    std::vector<vec3*> v2_targets;
+    std::vector<vec2> v2_offsets;
+
+    struct V2AnimationComponent {
+        vec2 start, end;
+        vec3* variable;
+    };
+
+    std::vector<V2AnimationComponent> v2_components;
+
+    float duration = 0.f;
+    bool active = false;
+    float timer = 0.f;
+    bool to_target = false;
+    AnimationSmoothing smoothing_fn;
+
+public:
+    Animation(float duration_seconds, AnimationSmoothing smoothing = AnimationSmoothing::LINEAR) 
+        : duration(duration_seconds), smoothing_fn(smoothing) {}
+
+    /* base functions */
+    void update(float dt) {
+        if (!active) return;
+
+        float progress = animation_smoothing(std::min(timer / duration,1.f));
+
+        for (auto& component : v2_components) {
+            vec2 value = component.start * (1-progress) + component.end * progress;
+            *component.variable = vec3(value,0.f);
+        }
+
+        timer += dt;
+        if (timer >= duration) {
+            for (auto& component : v2_components) { *component.variable = vec3(component.end,0.f); }
+            v2_components.clear();
+            active = false;
+        };
+
+    }
+    void start() {
+        timer = 0.f;
+        active = true;
+
+        for (int i=0; i<v2_targets.size(); i++) {
+            V2AnimationComponent v2_c = {
+                /* start */ to_target ? vec2(*v2_targets[i]) + v2_offsets[i] : vec2(*v2_targets[i]),
+                /* end */   to_target ? vec2(*v2_targets[i]) : vec2(*v2_targets[i]) + v2_offsets[i],
+                v2_targets[i]
+            };
+            v2_components.push_back(v2_c);
+        }
+    }
+
+    /* animation componetns */
+    void add_v2_animation_component(vec3& target, vec2 offset, bool to_target = false) {
+        this->to_target = to_target;
+        v2_targets.push_back(&target);
+        v2_offsets.push_back(offset);
+    }
+
+    /* helpers */
+    bool is_active() { return active; }
+
+private:
+    float animation_smoothing(float t) {
+        switch(smoothing_fn) {
+            case AnimationSmoothing::LINEAR:
+                return t;
+
+            case AnimationSmoothing::EASY_IN:
+                // Slow start, fast end (Quadratic)
+                return t * t;
+
+            case AnimationSmoothing::EASY_OUT:
+                // Fast start, slow end (Quadratic)
+                // Formula: 1 - (1 - t)^2
+                return 1.0f - (1.0f - t) * (1.0f - t);
+
+            case AnimationSmoothing::OVERSHOOT: {
+                // Goes slightly past the target and "springs" back
+                // s controls the amount of overshoot (1.70158 is the standard "Back" easing constant)
+                const float s = 1.70158f;
+                return (s + 1.0f) * (t - 1.0f) * (t - 1.0f) * (t - 1.0f) + (s * (t - 1.0f) * (t - 1.0f)) + 1.0f;
+            }
+
+            default:
+                return t;
+        }
+    }
+};
+
+#endif 
+
+======================================================================
+*** FILE: lines\BezierLine2D.h ***
+======================================================================
+
+#ifndef BezierLine2D_H
+#define BezierLine2D_H
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <vector>
+#include "world_objects/Object.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+using namespace glm;
+
+class Curve2D {
+public:
+    // return the position of the curve at paramter t (0->1)
+    virtual vec2 get_curve_position(float t) = 0;
+    
+    // return the normal direction of the curve at paramter t (0->1)
+    virtual vec2 get_curve_normal(float t) = 0;
+};
+
+class BezierLine2D : public UIObject, public Curve2D
+{
+private:
+    unsigned int vao = 0;
+    unsigned int vbo = 0;
+    std::vector<vec2> points;
+    std::vector<vec2> control_points;
+    std::vector<vec2> render_points;
+    float line_thickness = 5.f;
+
+public:
+    BezierLine2D(vec2 point1, vec2 control, vec2 point2, float line_thickness = 3.f, vec3 line_colour = Colour::WHITE)
+        : UIObject(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(points)
+    { 
+        render_to_world_pos = false;
+        set_segment(point1, control, point2);
+        set_colour(line_colour);
+    }
+    
+    BezierLine2D(float line_thickness = 3.f)
+        : UIObject(vec3(0.f), vec3(1.f)), line_thickness(line_thickness), points(NULL)
+    { render_to_world_pos = false; points.clear(); }
+
+    void construct() override {
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)0);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
+
+    void render() override {
+        if (!visible) return;
+
+        if (render_points.size() < 2) return;
+       
+       
+        //glDisable(GL_DEPTH_TEST);
+
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, render_points.size() * sizeof(glm::vec2), render_points.data(), GL_STATIC_DRAW);
+
+        glLineWidth(line_thickness);
+        
+        glDrawArrays(GL_LINE_STRIP, 0, render_points.size());
+       
+        glBindVertexArray(0);
+        //glEnable(GL_DEPTH_TEST);
+    }
+
+    void regenerate_bezier() {
+        if (points.size() < 2 || control_points.size() < 1) {
+            render_points.clear();
+            return;
+        }
+
+        const int render_points_per_segment = 20;
+
+        render_points.clear();
+        render_points.resize(points.size() + (points.size()-1)*render_points_per_segment);
+        int point_idx = 0;
+        
+        // for each segment of 2 points and control points
+        for (int i=1; i<points.size(); i++) {
+            vec2 start_point = points[i-1];
+            vec2 end_point = points[i];
+
+            render_points[point_idx++] = start_point;
+            
+            if (i-1 < control_points.size()-1) break;
+            vec2 control_point = control_points[i-1];
+            
+            // go through bezier lerp logic and push render points
+            for (int j=1; j<=render_points_per_segment; j++) {
+                float t = (float)j / (render_points_per_segment+1);
+                float invt = 1.f - t;
+                vec2 lerp_beg = start_point*invt + control_point*t;
+                vec2 lerp_end = control_point*invt + end_point*t;
+                vec2 lerp_final = lerp_beg*invt + lerp_end*t;
+                render_points[point_idx++] = lerp_final;
+            }
+
+            render_points[point_idx++] = end_point;
+        }
+        
+    }
+
+    void set_segment(vec2 p1, vec2 c, vec2 p2) {
+        std::vector<vec2> new_points = {p1, p2};
+        std::vector<vec2> new_control_point = {c};
+        points = new_points;
+        control_points = new_control_point;
+        regenerate_bezier();
+    }
+    void add_segment(vec2 c, vec2 p) {
+        points.push_back(p);
+        control_points.push_back(c);
+        regenerate_bezier();
+    }
+
+    void clear_points() { points.clear(); control_points.clear(); }
+    int get_point_num() { return points.size() + control_points.size(); }
+    std::vector<vec2> get_points() { return points; }
+    std::vector<vec2> get_control_points() { return control_points; }
+
+    vec2 get_curve_position(float t) override {
+        if (render_points.size() == 0) return vec2(0);
+
+        float t_point = glm::clamp(t, 0.f, 1.f) * (render_points.size()-1);
+        int point_idx = t_point;
+        float fract = t_point - point_idx;
+
+        if (point_idx == render_points.size()-1) return render_points[point_idx];
+        else {
+            return render_points[point_idx]*(1.f-fract) + render_points[point_idx+1]*fract;
+        }
+    }
+
+    vec2 get_curve_normal(float t) override {
+        if (render_points.size() < 2) return vec2(0, 1);
+
+        int point_idx = glm::clamp(t, 0.f, 1.f) * (render_points.size() - 1); // last point 
+        if (point_idx == render_points.size()-1) point_idx--; // dont use last point, use prev normal
+
+        vec2 p1 = render_points[point_idx];
+        vec2 p2 = render_points[point_idx + 1];
+        vec2 tangent = glm::normalize(p2 - p1);
+        return vec2(-tangent.y, tangent.x);
+    }
+
+    ~BezierLine2D() override {
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+    }
+};
+
+#endif 
 
 ======================================================================
 *** FILE: lines\BridgeLine.h ***
@@ -291,6 +588,7 @@ public:
     void render() override {
         if (!visible) return;
         if (points.size() < 2) return;
+       
        
         //glDisable(GL_DEPTH_TEST);
 
@@ -592,18 +890,16 @@ private:
         int link_id;
         vec2 exact_position;
     };
-    static const int GRID_SIZE_X = 32; 
+    static const int GRID_SIZE_X = 64; 
     static const int GRID_SIZE_Y = GRID_SIZE_X; 
     const float GRID_STEP_X = 1.f / GRID_SIZE_X;
     const float GRID_STEP_Y = GRID_STEP_X;
 
     std::vector<GridEntry> grid[GRID_SIZE_X][GRID_SIZE_Y];
-    std::vector<unsigned char> built_path_mask;
-    Texture* built_path_tex;
 
 public:
 
-    PathSpatialGrid () : built_path_mask(GRID_SIZE_X*GRID_SIZE_Y, 0) { }
+    PathSpatialGrid () { }
 
     void clear() {
         for(int x=0; x<GRID_SIZE_X; x++)
@@ -663,23 +959,6 @@ public:
             }
         }
         return found_link; // will be -1 if no links in range
-    }
-
-    void build_path(int link_id) {
-        for (int x=0; x<GRID_SIZE_X; x++) {
-            for (int y=0; y<GRID_SIZE_Y; y++) {
-                int idx = y*GRID_SIZE_X + x;
-                for (GridEntry ge : grid[x][y])  {
-                    if (ge.link_id == link_id) built_path_mask[idx] =  (unsigned char)255.f; // this line crashed the app
-                }
-            }
-        }
-
-        delete built_path_tex;
-        built_path_tex = new Texture(GRID_SIZE_X, GRID_SIZE_Y, built_path_mask.data(), 1);
-    }
-    Texture* get_built_path_mask() {
-        return built_path_tex;
     }
 
 private:
@@ -751,9 +1030,12 @@ protected:
     vector<TerrainNode> nodes;
     vector<TerrainLink> links;
 
-    Texture* build_paths_texture = new TEXTURE_EMPTY;
+    unsigned short* built_path_mask = nullptr;
+    Texture* build_paths_texture = nullptr;
+    int path_mask_x = 0, path_mask_y = 0;
 
 public:
+
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
     
@@ -818,17 +1100,117 @@ public:
         return spatial_grid.get_link_at_pos(pos, radius, out_closest_point);
     }
 
-    void build_path_and_apply_new_mask(int link_id, Shader* terrain_shader) {
+    void init_mask() {
+        path_mask_x = terrain->terrain_data->resolution_x;
+        path_mask_y = terrain->terrain_data->resolution_y;
+
+        // ZMIANA: Mnożymy razy 3 dla formatu RGB (R=Wysokość, G=Pusty, B=Wygląd)
+        int total_size = path_mask_x * path_mask_y * 3;
+        
+        if (built_path_mask) delete[] built_path_mask;
+        built_path_mask = new unsigned short[total_size];
+        memset(built_path_mask, 0, total_size*2);
+    }
+
+    void build_path(int link_id) {
+        /* find and disable the build path */
+        Line2D* found_line = nullptr;
+
         for (auto l : links) {
             if (l.link_id == link_id) {
-                l.line_obj->set_visible(false);
+                found_line = l.line_obj;
+                break;
             }
         }
-        spatial_grid.build_path(link_id);
-        Texture* built_path_tex = spatial_grid.get_built_path_mask();
-        if (built_path_tex) terrain_shader->setTexture("built_path_mask", built_path_tex);
-    }   
 
+        if (!found_line) { std::cout << "no link with id: " << link_id << " found to build! " << std::endl; return; }
+        if (!built_path_mask) init_mask();
+        found_line->set_visible(false);
+
+        const std::vector<vec2>& points = found_line->get_points();
+        if (points.size() < 2) return;
+
+        /* Parametry rysowania */
+        const float thickness_px = PATH_BUILT_THICKNESS; 
+        const float half_thickness = thickness_px / 2.0f;
+        const float dash_length = 0.02f; // Długość kreski w jednostkach lokalnych (dostosuj do skali świata)
+        const float dash_width_px = thickness_px * 0.15f; // Szerokość białej linii to 15% szerokości drogi
+
+        float current_dist_along_path = 0.0f;
+
+        /* 3. Iteracja po odcinkach linii */
+        for (size_t i = 0; i < points.size() - 1; ++i) {
+            vec2 p1 = points[i];
+            vec2 p2 = points[i + 1];
+
+            // Konwersja punktów lokalnych [-0.5, 0.5] na współrzędne pikseli [0, Res]
+            vec2 px_p1 = vec2((p1.x + 0.5f) * path_mask_x, (p1.y + 0.5f) * path_mask_y);
+            vec2 px_p2 = vec2((p2.x + 0.5f) * path_mask_x, (p2.y + 0.5f) * path_mask_y);
+            
+            float segment_len_local = glm::distance(p1, p2);
+            float segment_len_px = glm::distance(px_p1, px_p2);
+
+            // Oblicz Bounding Box dla odcinka (z marginesem na grubość)
+            float min_x = std::min(px_p1.x, px_p2.x) - half_thickness;
+            float max_x = std::max(px_p1.x, px_p2.x) + half_thickness;
+            float min_y = std::min(px_p1.y, px_p2.y) - half_thickness;
+            float max_y = std::max(px_p1.y, px_p2.y) + half_thickness;
+
+            // Clamp do granic tekstury
+            int start_x = std::clamp((int)min_x, 0, path_mask_x - 1);
+            int end_x   = std::clamp((int)max_x, 0, path_mask_x - 1);
+            int start_y = std::clamp((int)min_y, 0, path_mask_y - 1);
+            int end_y   = std::clamp((int)max_y, 0, path_mask_y - 1);
+
+            // Wektory pomocnicze do matematyki odcinka
+            vec2 seg_dir = px_p2 - px_p1;
+            float seg_len_sq = glm::dot(seg_dir, seg_dir);
+
+            /* 4. Rasteryzacja prostokąta */
+            for (int y = start_y; y <= end_y; ++y) {
+                for (int x = start_x; x <= end_x; ++x) {
+                    vec2 pixel_pos = vec2(x, y);
+                    vec2 point_to_pixel = pixel_pos - px_p1;
+                    float t = std::clamp(glm::dot(point_to_pixel, seg_dir) / seg_len_sq, 0.0f, 1.0f);
+
+                    vec2 closest_px = px_p1 + seg_dir * t;
+                    float dist_px = glm::distance(pixel_pos, closest_px);
+
+                    if (dist_px <= half_thickness) {
+                        int idx = (y * path_mask_x + x) * 3;
+                        
+                        // RED: Wysokość (znormalizowana 0.0 - 1.0 lub metry, tu 0-255)
+                        vec2 center_local = vec2((closest_px.x/path_mask_x)-0.5f, (closest_px.y/path_mask_y)-0.5f);
+                        float h = terrain->elevation_line_drawer.get_height_at_local_pos_normalized(center_local);
+                        built_path_mask[idx] = (unsigned short)(std::clamp(h, 0.0f, 1.0f) * 65535.0f);
+
+                        // GREEN: Dystans od środka (1 = środek, 0 = krawędź)
+                        float dist_norm = glm::clamp(1.f - dist_px / (thickness_px), 0.f, 1.f);
+                        built_path_mask[idx + 1] = (unsigned short)(dist_norm * 65535.0f);
+
+                        // BLUE: Dystans wzdłuż path (używamy fmod, żeby zmieścić się w 0-255)
+                        // dash_length w jednostkach lokalnych, np. 0.02
+                        float total_local_dist = current_dist_along_path + (t * segment_len_local);
+                        float pattern = fmod(total_local_dist, dash_length * 2.0f) / (dash_length * 2.0f);
+                        built_path_mask[idx + 2] = (unsigned short)(pattern * 65535.0f);
+                    }
+                }
+            }
+            // Zwiększamy dystans o długość właśnie narysowanego odcinka
+            current_dist_along_path += segment_len_local;
+        }
+
+        /* 5. Generowanie tekstury RGB */
+        if (build_paths_texture) delete build_paths_texture;
+        
+        // ZMIANA: Ostatni argument to 3 (kanały RGB)
+        build_paths_texture = new Texture(path_mask_x, path_mask_y, built_path_mask, 3);
+    }
+    void set_built_path_mask(Shader* terrain_shader) {
+        if (build_paths_texture) {
+            terrain_shader->setTexture("built_path_mask", build_paths_texture);
+        }
+    }
 };
 
 #endif
@@ -1738,9 +2120,14 @@ private:
 #include "Camera.h"
 #include "ScreenUI.h"
 
+enum SceneID {
+    TITLE_CARD, MAP_EDITOR, 
+    LEVEL1, LEVEL2, LEVEL3, LEVEL4, LEVEL5, LEVEL6, LEVEL7, LEVEL8, LEVEL9, LEVEL10 
+};
+
 class Scene
 {
-public:
+protected:
     World *world;
     Camera *camera;
     ScreenUI *screen_ui;
@@ -1750,6 +2137,10 @@ public:
     bool is_active = true;
     vec4 background_colour = Colour::DEFAULT_RENDER_BACKGROUND;
 
+    int next_scene_id = -1;
+
+public:
+
     Scene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) 
         : world(w), camera(c), screen_ui(s), user_input(ih) {}
 
@@ -1757,7 +2148,8 @@ public:
     virtual void loop(float dt) = 0;
     
     bool active() { return is_active; }
-    void end_scene() { is_active = false; }
+    void end_scene(int next_scene_id) { is_active = false; this->next_scene_id = next_scene_id; }
+    int get_next_scene_id() { return next_scene_id; }
 
     virtual Shader* get_world_pos_buffer_shader() { return NULL; }
     
@@ -1908,7 +2300,7 @@ public:
             vec2 path_closest_point;
             int link_id = path_system->get_link_at_pos(mouse_terrain_local_pos, CURSOR_OUTER_RADIUS, path_closest_point);
             if (!path_click_menu->visible && link_id != -1){
-                float local_height = terrain->elevation_line_drawer.get_height_at_local_pos(path_closest_point.x,path_closest_point.y);
+                float local_height = terrain->elevation_line_drawer.get_height_at_local_pos(path_closest_point);
                 vec4 path_world_pos = terrain->terrain_obj->get_transform() * vec4(path_closest_point, local_height, 1.f);
                 click_menu_link_id_selected = link_id;
                 click_menu_change_visible(path_click_menu, true, vec3(path_world_pos), vec3(path_closest_point,local_height));
@@ -1999,7 +2391,8 @@ public:
 
             /* PATH CLICK MENU */
             case ButtonID::BUTTON_BUILD:
-                path_system->build_path_and_apply_new_mask(click_menu_link_id_selected, terrain->terrain_shader);
+                path_system->build_path(click_menu_link_id_selected);
+                path_system->set_built_path_mask(terrain->terrain_shader);
                 click_menu_change_visible(path_click_menu, false);
                 break;
             case ButtonID::BUTTON_CREATE_INTERSECTION:
@@ -2129,20 +2522,31 @@ private:
 #include "Scene.h"
 #include "UIList.h"
 #include "TextButton.h"
+#include "BezierLine2D.h"
 
 class TitleCardScene : public Scene
 {
 private:
+    const int level_number = 1 + SceneID::LEVEL10 - SceneID::LEVEL1;
     enum ButtonID {
-        PROGRAM_START=0, CREDITS=1
+        LEVEL_SELECT, CREDITS, MAP_EDITOR_START, 
+        LEVEL_START=100
     };
 
     UIList *menu_list;
     UIText *title_display;
     TextButton *credits_text;
-    TextButton *start_program_button;
+    TextButton *level_select_button;
+    TextButton* map_editor_button;
+
+    BezierLine2D *bezier;
+    UIText *bezier_text;
+
+    UIList* level_select_panel;
+
     bool end_scene_flag = false;
     float end_scene_timer = 0.5;
+    int next_scene_id = 0;
 
 public:
     TitleCardScene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih) {
@@ -2157,35 +2561,72 @@ public:
 
         set_background_colour(Colour::GREY);
         
-        /* Setup ui objects */
+        /* main menu list*/
         menu_list = new UIList(20, Colour::DARK_GREY, 20);
         menu_list->set_anchor( UIAnchor::TOP_LEFT, vec2(20,-20) );
         title_display = new UIText("Layer Trains Prototype ;)", 1.15f, Colour::WHITE);
-        start_program_button = new TextButton("start", 0.75f, Colour::WHITE, ButtonID::PROGRAM_START,false);
+        level_select_button = new TextButton("level select", 0.75f, Colour::WHITE, ButtonID::LEVEL_SELECT,true);
+        map_editor_button = new TextButton("map editor", 0.75f, Colour::WHITE, ButtonID::MAP_EDITOR_START,false);
         credits_text = new TextButton("credits", 0.75f, Colour::WHITE, ButtonID::CREDITS,false);
         menu_list->add_item( title_display );
-        menu_list->add_item( start_program_button );
+        menu_list->add_item( level_select_button );
+        menu_list->add_item( map_editor_button );
         menu_list->add_item( credits_text );
         screen_ui->place( menu_list );
+        
+        /* curvy text display */
+        Curve2D* bezier_curve = new BezierLine2D(vec2(400), vec2(550,525), vec2(700, 500));
+        bezier_text = new UIText("bezier curvy :)", .75f, Colour::WHITE);
+        bezier_text->place_on_curve(bezier_curve);
+        screen_ui->place( bezier_text );
+        
+        /* Level select right panel */
+        level_select_panel = new UIList(20, Colour::DARK_GREY, 20);
+        level_select_panel->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(-100, 0));
+        for (int i=0; i<level_number; i++) {
+            std::string level_name = "level " + std::to_string(i+1);
+            TextButton* lvl_btn = new TextButton(level_name.c_str(), 0.75f, Colour::WHITE, ButtonID::LEVEL_START+i,false);
+            level_select_panel->add_item( lvl_btn );
+        }
+        level_select_panel->set_visible(false);
+        level_select_panel->set_intro_animation(AnimationPreset::ENTRY_RIGHT);
+        screen_ui->place( level_select_panel );
     }
     
     void loop(float dt) override {
         /* end scene logic */
         if (end_scene_flag) end_scene_timer -= dt;
-        if (end_scene_timer <= 0.f) end_scene();
+        if (end_scene_timer <= 0.f) end_scene(next_scene_id);
     }
 
     void on_ui_button_clicked(int button_id, bool state) {
         std::cout << "BUTTON NR " << button_id << " SET TO STATE: " << state << std::endl;
 
-        if (button_id == ButtonID::PROGRAM_START) { 
-            start_program_button->set_text("loading ...");
-            menu_list->recalculate_layout();
-            end_scene_flag = true;
+        switch(button_id) {
+            case ButtonID::LEVEL_SELECT:
+                level_select_panel->set_visible(state);
+                level_select_button->set_text(state ? "choose level" : "level select");
+                menu_list->recalculate_layout();
+                break;
+        
+            case ButtonID::CREDITS:
+                credits_text->set_text("made by Dominik Mat <3");
+                menu_list->recalculate_layout();
+                break;
+        
+            case ButtonID::MAP_EDITOR_START:
+                map_editor_button->set_text("loading ...");
+                menu_list->recalculate_layout();
+                end_scene_flag = true;
+                next_scene_id = SceneID::MAP_EDITOR;
+                break;       
         }
-        if (button_id == ButtonID::CREDITS) {
-            credits_text->set_text("made by Dominik Mat <3");
-            menu_list->recalculate_layout();
+
+        /* progress to specific level */
+        if (button_id >= ButtonID::LEVEL_START && button_id < ButtonID::LEVEL_START+level_number) {
+            level_select_panel->set_visible(false);
+            end_scene_flag = true;
+            next_scene_id = SceneID::LEVEL1 + (button_id-ButtonID::LEVEL_START);
         }
     }
 };
@@ -2312,7 +2753,8 @@ namespace Colour {
 
 #define PATH_DRAW_SLOPE_CHANGE_SPEED .1f
 #define PATH_COLOUR Colour::PURPLE
-#define PATH_THICKNESS 8.f
+#define PATH_THICKNESS 6.f
+#define PATH_BUILT_THICKNESS PATH_THICKNESS * 1.5f
 #define PATH_TERRAIN_OFFSET_DIST .01f
 
 ======================================================================
@@ -2896,9 +3338,26 @@ void main(){
     }
 
     /* Draw roads */
-    float road_alpha = texture(built_path_mask, TexCoord).r;
-    if (road_alpha > 0.001f) {
-        colour = path_colour;
+    vec3 road_data = texture(built_path_mask, TexCoord).rgb;
+    if (road_data.r > 0) {
+        float dist_from_center = road_data.g; // 0..1
+        float path_progress = road_data.b;    // 0..1 (fmod wyniku)
+
+        // Wyostrzanie krawędzi drogi (SDF style)
+        //float road_mask = smoothstep(0.9, 1.0, dist_from_center+1.f );
+        
+        // Obliczanie przerywanej linii
+        // path_progress < 0.5 to kreska, > 0.5 to przerwa
+        bool is_dash = path_progress < 0.5;
+        bool is_center = dist_from_center > 1.f-0.15;
+        
+        vec3 base_road_col = path_colour; // Asfalt
+        if (is_dash && is_center) {
+            base_road_col = vec3(1.0); // Biała linia
+        }
+        
+        // Mix z kolorem terenu na krawędziach dla gładkości
+        colour = mix(colour, base_road_col, 1.f);
     }
 
     /* Draw mouse cursor on Terrain */
@@ -3142,18 +3601,22 @@ void main()
 {
     vec3 position = aPos;
     
-    if (heightmap_enabled) { 
-        vec2 texCoord = aTexCoord;
-        
+    if (heightmap_enabled) {    
         // handle boundary
         float heightmap_step_x = 1.f / heightmap_resolution_x;
         float heightmap_step_y = 1.f / heightmap_resolution_y;
-        if (texCoord.x < heightmap_step_x || texCoord.x > 1.f - heightmap_step_x
-            || texCoord.y < heightmap_step_y || texCoord.y > 1.f - heightmap_step_y) {
+        if (aTexCoord.x < heightmap_step_x || aTexCoord.x > 1.f - heightmap_step_x
+            || aTexCoord.y < heightmap_step_y || aTexCoord.y > 1.f - heightmap_step_y) {
             position.z = 0.f;
         } else {
-            position.z = texture(heightmap, texCoord).x * heightmap_scale;
+            position.z = texture(heightmap, aTexCoord).x * heightmap_scale;
         }
+
+        /* apply height from built road mask if needed */
+        vec3 local_road = texture(built_path_mask, aTexCoord).rgb;
+        if (local_road.g > 0.25f) {
+            position.z = local_road.r * heightmap_scale;
+        }     
     } 
 
     v_worldPos = (transform * vec4(position, 1.0)).xyz;
@@ -3257,11 +3720,15 @@ public:
     }
 
     /* local position is [-.5,.5] terrain position */
-    float get_height_at_local_pos(float x, float y) {
+    float get_height_at_local_pos_normalized(float x, float y) {
         if (x<-0.5f || y<-0.5f || x>0.5f || y>0.5f) return 0.f;
-        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height) * heightmap_scale;
+        return get_height_bilinear((x+0.5f)*hmap_width,(y+0.5f)*hmap_height);
+    }
+    float get_height_at_local_pos(float x, float y) {
+        return get_height_at_local_pos_normalized(x,y) * heightmap_scale;
     }
     float get_height_at_local_pos(vec2 p) { return get_height_at_local_pos(p.x,p.y); }
+    float get_height_at_local_pos_normalized(vec2 p) { return get_height_at_local_pos_normalized(p.x,p.y); }
     
     glm::vec3 get_local_pos_from_uv(float u, float v) {
         u = glm::clamp(u,0.f,1.f); v = glm::clamp(v,0.f,1.f);
@@ -3310,7 +3777,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
             }
 
             vec2 dir_to_target = normalize(end - current_pos);
-            float current_h = get_height_at_local_pos(current_pos.x, current_pos.y);
+            float current_h = get_height_at_local_pos(current_pos);
 
             float best_dist_score = FLT_MAX;
             vec2 best_next_pos = current_pos;
@@ -3330,7 +3797,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
                 
                 if (abs(candidate_pos.x) > 0.5f || abs(candidate_pos.y) > 0.5f) continue;
 
-                float candidate_h = get_height_at_local_pos(candidate_pos.x, candidate_pos.y);
+                float candidate_h = get_height_at_local_pos(candidate_pos);
                 float height_diff = candidate_h - current_h;
                 float actual_slope = height_diff / step;
 
@@ -3391,7 +3858,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
             }
 
             vec2 dir_to_target = normalize(end - current_pos);
-            float current_h = get_height_at_local_pos(current_pos.x, current_pos.y);
+            float current_h = get_height_at_local_pos(current_pos);
 
             float best_score = FLT_MAX;
             vec2 best_next_pos = current_pos + dir_to_target * step;
@@ -3409,7 +3876,7 @@ vector<vec2> generate_constant_slope_path(vec2 start, vec2 end, float target_slo
                 
                 if (abs(candidate_pos.x) > 0.5f || abs(candidate_pos.y) > 0.5f) continue;
 
-                float candidate_h = get_height_at_local_pos(candidate_pos.x, candidate_pos.y);
+                float candidate_h = get_height_at_local_pos(candidate_pos);
                 float height_diff = candidate_h - current_h;
                 float actual_slope = abs(height_diff / step); // Absolute slope
 
@@ -3909,7 +4376,7 @@ public:
         // handle shader and camera 
         terrain_shader = &ShaderManager::get_terrain_shader(&heightmap_texture, terrain_data->vertical_scale, &generated_texture);
         terrain_shader->config_worldpos_buffer();
-        camera->set_orthographic(terrain_shader);
+        //camera->set_orthographic(terrain_shader);
         terrain_obj->set_shader(terrain_shader);
         
         // Standard Orientation: Rotated -45 degrees on X, Scaled up 3x
@@ -4491,7 +4958,6 @@ public:
             if (!data) { std::cout << "Failed to load 16bit texture" << std::endl; return; }
             this->width = width;
             this->height = height;
-
             glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, data);
             glGenerateMipmap(GL_TEXTURE_2D);
             stbi_image_free(data);
@@ -4527,12 +4993,36 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
+
         if (colour_channels == 3){
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
         }
         else if (colour_channels == 1) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data);
+        }
+        else {
+            std::cout << "Colour channel number not supported!" << std::endl;
+            return;
+        }
+
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    Texture(int _width, int _height, const unsigned short* data, int colour_channels=3) : width(_width), height(_height)
+    {
+        glGenTextures(1, &ID);
+        glBindTexture(GL_TEXTURE_2D, ID);
+
+        // Ustawienie parametrów
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // Użyj CLAMP dla map
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        if (colour_channels == 3){
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16, width, height, 0, GL_RGB, GL_UNSIGNED_SHORT, data);
+        }
+        else if (colour_channels == 1) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, data);
         }
         else {
             std::cout << "Colour channel number not supported!" << std::endl;
@@ -4994,6 +5484,10 @@ public:
             object_ptr->update_screen_size(scr_width, scr_height);
         }
     }
+
+    void update_animations(float dt) {
+        for (auto obj : objects) obj->update_animations(dt);
+    }
 };
 
 #endif // ScreenUI_H
@@ -5057,7 +5551,7 @@ public:
     void set_clicked_state(bool clicked) override {
         is_pressed = clicked && toggle;
         if (has_background) bg_panel->set_tint_colour( clicked ? Colour::DARK_GREY : Colour::WHITE );
-        else text_obj->set_tint_colour( clicked ? Colour::DARK_GREY : Colour::WHITE );
+        else text_obj->set_tint_colour( clicked ? Colour::BLACK : Colour::WHITE );
     }
     void set_hover_state(bool hover) override {
         if (is_pressed) return;
@@ -5333,6 +5827,7 @@ public:
 #include <algorithm>
 #include <glm/glm.hpp>
 #include "Object.h"
+#include "Animation.h"
 
 enum class UIAnchor {
     TOP_LEFT,    TOP_CENTER,    TOP_RIGHT,
@@ -5346,6 +5841,12 @@ class UIObject : public Object {
 protected:
     Texture *active_texture = nullptr;
     std::vector<UIObject*> ui_children;
+
+    enum AnimationPlace { INTRO, OUTRO };
+    std::unordered_map<int,Animation*> animations = {
+        { AnimationPlace::INTRO, nullptr },
+        { AnimationPlace::OUTRO, nullptr }
+    };
 
 public:
     UIAnchor anchor;
@@ -5471,6 +5972,38 @@ public:
         for(auto* c : ui_children) {
             c->set_visible(state);
         }
+        
+        /* run animation */
+        AnimationPlace type = state ? AnimationPlace::INTRO : AnimationPlace::OUTRO;
+        if (animations[type]) { 
+            animations[type]->start(); 
+        }
+    }
+
+    void set_intro_animation(AnimationPreset animation_id) {
+        
+        const float anim_duration_sec = 2.f;
+        Animation* anim = new Animation(anim_duration_sec, AnimationSmoothing::EASY_OUT);
+
+        switch(animation_id) {
+            case AnimationPreset::ENTRY_RIGHT:
+                anim->add_v2_animation_component(position, (V3_X*200.f), true);
+                break;
+            default:
+                std::cout << "animation preset not found!" << std::endl;
+                return;
+        }
+
+        set_intro_animation(anim);
+    }
+    void set_intro_animation(Animation *anim) {
+        animations[AnimationPlace::INTRO] = anim;    
+    }
+
+    void update_animations(float dt) {
+        for (auto anim : animations) {
+            if (anim.second) anim.second->update(dt);
+        }
     }
 
     ~UIObject() override {
@@ -5577,13 +6110,12 @@ public:
 #include <map>
 #include <string>
 #include <iostream>
-
 #include <ft2build.h>
 #include FT_FREETYPE_H
-
 #include "UIObject.h"
 #include "Shader.h"
-
+#include "BezierLine2D.h" // for Curve2D interface
+  
 struct Character {
     unsigned int TextureID;  
     glm::ivec2   Size;       
@@ -5600,6 +6132,9 @@ private:
     
     static std::map<GLchar, Character> Characters;
     static bool isFontLoaded;
+
+    bool on_curve = false;
+    Curve2D* curve = nullptr;
 
 public:
     UIText(std::string text, float font_scale = 1.0f, vec4 color = Colour::BLACK)
@@ -5666,31 +6201,60 @@ public:
 
         glBindVertexArray(VAO);
 
-        float x = -size.x/2.f;
-        float y = -size.y / 2.0f + height_below_writing_line; 
-
-        std::string::const_iterator c;
-        for (c = textString.begin(); c != textString.end(); c++) 
+        // Cursor for standard linear text
+        float cursor_x = -size.x/2.f;
+        float cursor_y = -size.y / 2.0f + height_below_writing_line; 
+        
+        for (int i=0; i < textString.size(); i++) 
         {
-            Character ch = Characters[*c];
+            GLchar c = textString.at(i);
+            Character ch = Characters[c];
 
-            float xpos = x + ch.Bearing.x * font_scale;
-            float ypos = y - (ch.Size.y - ch.Bearing.y) * font_scale;
-
+            // 1. Calculate Local Offsets (relative to the anchor point of the letter)
             float w = ch.Size.x * font_scale;
             float h = ch.Size.y * font_scale;
+            float x_rel = ch.Bearing.x * font_scale;
+            float y_rel = (ch.Bearing.y - ch.Size.y) * font_scale;
 
+            // Define the 4 corners relative to the specific character's anchor
+            vec2 local_verts[4] = {
+                { x_rel,     y_rel + h }, // TL
+                { x_rel,     y_rel     }, // BL
+                { x_rel + w, y_rel     }, // BR
+                { x_rel + w, y_rel + h }  // TR
+            };
+            vec2 final_pos[4];
 
+            // 2. Apply Transformation
+            if (on_curve) {
+                float t = (float)i / (textString.size() - 1);
+                
+                // Get Curve Data
+                vec2 p = curve->get_curve_position(t) - vec2(size)/2.f;
+                vec2 normal = curve->get_curve_normal(t);
+                vec2 tangent = vec2(normal.y, -normal.x); // Rotate normal -90 deg
 
-            // Z is kept at 0.0f because the Object transform handles 3D placement
+                // Rotate Local Offsets + Add Curve Position
+                for(int k=0; k<4; k++) {
+                    final_pos[k] = p + (tangent * local_verts[k].x) + (normal * local_verts[k].y);
+                }
+            } 
+            else {
+                // Standard Linear Placement
+                for(int k=0; k<4; k++) {
+                    final_pos[k] = vec2(cursor_x, cursor_y) + local_verts[k];
+                }
+            }
+
+            // 3. Map to GL_TRIANGLES (using the transformed positions)
             float vertices[6][4] = {
-                { xpos,     ypos + h,   0.0f, 0.0f },            
-                { xpos,     ypos,       0.0f, 1.0f },
-                { xpos + w, ypos,       1.0f, 1.0f },
+                { final_pos[0].x, final_pos[0].y,   0.0f, 0.0f },
+                { final_pos[1].x, final_pos[1].y,   0.0f, 1.0f },
+                { final_pos[2].x, final_pos[2].y,   1.0f, 1.0f },
 
-                { xpos,     ypos + h,   0.0f, 0.0f },
-                { xpos + w, ypos,       1.0f, 1.0f },
-                { xpos + w, ypos + h,   1.0f, 0.0f }           
+                { final_pos[0].x, final_pos[0].y,   0.0f, 0.0f },
+                { final_pos[2].x, final_pos[2].y,   1.0f, 1.0f },
+                { final_pos[3].x, final_pos[3].y,   1.0f, 0.0f }
             };
 
             glBindTexture(GL_TEXTURE_2D, ch.TextureID);
@@ -5700,13 +6264,12 @@ public:
 
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            x += (ch.Advance >> 6) * font_scale; 
+            cursor_x += (ch.Advance >> 6) * font_scale; 
         }
         
         glBindVertexArray(0);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
-
     void disable_render_properties() override {
         shader->setBool("isText", false);   
     }
@@ -5754,6 +6317,11 @@ public:
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.y), V3_Y);
         local_transform_matrix = glm::rotate(local_transform_matrix, glm::radians(this->rotation.z), V3_Z);
         local_transform_matrix = glm::scale(local_transform_matrix, vec3(1.f));
+    }
+
+    void place_on_curve(Curve2D *curve) {
+        on_curve = true;
+        this->curve = curve;
     }
 };
 

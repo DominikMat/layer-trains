@@ -46,7 +46,7 @@ public:
     }
 
     void render() override {        
-        if (!visible) return;
+        if (!can_render()) return;
         glBindVertexArray(this->VAO); 
         glDrawArrays(GL_TRIANGLES, 0, 2*6*3);
         glBindVertexArray(0);

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 #include "Object.h"
+#include "Animation.h"
 
 enum class UIAnchor {
     TOP_LEFT,    TOP_CENTER,    TOP_RIGHT,
@@ -12,12 +13,21 @@ enum class UIAnchor {
     BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT,
 };
 
+enum AnimationPlace { INTRO, OUTRO };
+
 class Button;
 
 class UIObject : public Object {
 protected:
     Texture *active_texture = nullptr;
     std::vector<UIObject*> ui_children;
+
+    std::unordered_map<int,Animation*> animations = {
+        { AnimationPlace::INTRO, nullptr },
+        { AnimationPlace::OUTRO, nullptr }
+    };
+    
+    bool animating = false;
 
 public:
     UIAnchor anchor;
@@ -28,25 +38,26 @@ public:
 
     UIObject(glm::vec2 size, UIAnchor anchor = UIAnchor::CENTER, glm::vec2 anchor_offset = glm::vec2(0.f))
         : anchor(anchor), anchor_offset(anchor_offset), Object(get_object_anchored_position(anchor, anchor_offset),vec3(size,1.f))
-    {}
+    {
+        set_default_animations();
+    }
     UIObject(glm::vec2 position, glm::vec2 size)
         : Object(glm::vec3(position,0.f), glm::vec3(size,1.f)), anchor(UIAnchor::BOTTOM_LEFT), anchor_offset(vec2(0.f))
-    {}
+    {
+        set_default_animations();
+    }
 
     void set_anchor (UIAnchor anchor, vec2 anchor_offset) {
         this->anchor = anchor;
         this->anchor_offset = anchor_offset;
-        position = get_object_anchored_position(anchor, anchor_offset);
         set_screenspace();
+        recalculate_ui_position(); // has to be here for UIList to work ???
         resize_and_reposition();
     }
 
     virtual void set_parent(Object *parent) override {
         Object::set_parent(parent);
-        if (is_screen_object){
-            position = get_object_anchored_position(anchor, anchor_offset);
-            resize_and_reposition();
-        }
+        if (is_screen_object) resize_and_reposition();
     }
     void set_ui_parent(UIObject *parent) {
         set_parent(parent);
@@ -74,6 +85,8 @@ public:
     vec3 get_object_anchored_position(UIAnchor anchor, vec2 anchor_offset) {
         return vec3(get_anchor_position(anchor) + anchor_offset,0.f);
     }
+
+    bool can_render() override { return visible || animating; }
 
     void update_screen_size(float w, float h) {
         scr_width = w; scr_height = h;
@@ -143,6 +156,66 @@ public:
         for(auto* c : ui_children) {
             c->set_visible(state);
         }
+        
+        /* run animation */
+        AnimationPlace type = state ? AnimationPlace::INTRO : AnimationPlace::OUTRO;
+        if (animations[type]) { 
+            if (animating) {
+                for (auto& anim : animations) if (anim.second->is_active()) anim.second->stop();
+            }
+            animations[type]->start(); 
+            animating = true;
+        }
+    }
+
+    void set_animation(AnimationPreset animation_id, AnimationPlace place) {
+        
+        Animation* anim = new Animation();
+        const float anim_duration = 2.f;
+
+        switch(animation_id) {
+            case AnimationPreset::ENTRY_RIGHT:
+                anim->add_animation_component(anchor_offset, vec2(150.f,0.f), anim_duration, true, AnimationSmoothing::OVERSHOOT);
+                break;
+            case AnimationPreset::EXIT_RIGHT:
+                anim->add_animation_component(anchor_offset, vec2(150.f,0.f), anim_duration, false, AnimationSmoothing::EASY_IN);
+                break;
+            case AnimationPreset::FADE_IN:
+                anim->add_animation_component(opacity, -1.f, anim_duration, true, AnimationSmoothing::EASY_OUT);
+                break;
+            case AnimationPreset::FADE_OUT:
+                anim->add_animation_component(opacity, 1.f, anim_duration, false, AnimationSmoothing::EASY_IN);
+                break;
+            default:
+                std::cout << "animation preset not found!" << std::endl;
+                return;
+        }
+
+        set_animation(anim, place);
+    }
+    void set_animation(Animation *anim, AnimationPlace place) {
+        animations[place] = anim;    
+    }
+
+    void update_animations(float dt) {
+        if (!animating) return; 
+
+        animating = false;
+        for (auto anim : animations) {
+            if (anim.second) {
+                animating = animating || anim.second->is_active();
+                anim.second->update(dt);
+            }
+        }
+
+        if (animating) {
+            resize_and_reposition();
+        }
+    }
+
+    virtual void set_default_animations() {
+        set_animation(AnimationPreset::FADE_IN, AnimationPlace::INTRO);
+        set_animation(AnimationPreset::FADE_OUT, AnimationPlace::OUTRO);
     }
 
     ~UIObject() override {

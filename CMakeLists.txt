@@ -58,6 +58,7 @@ target_include_directories(Layer_Trains
         ${CMAKE_SOURCE_DIR}/src/path_drawer
         ${CMAKE_SOURCE_DIR}/src/scenes
         ${CMAKE_SOURCE_DIR}/src/lines
+        ${CMAKE_SOURCE_DIR}/src/animation
 )
 
 # (opcjonalnie) jeśli chcesz wydruki configure-time

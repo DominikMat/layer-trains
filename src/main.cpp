@@ -91,6 +91,7 @@ int main() {
             world.render();
 
             if (prev_window_size != window_size) screen_ui.set_new_window_size(window_size.x, window_size.y);
+            screen_ui.update_animations(dt);
             screen_ui.render();
             
             window.display(); 
@@ -105,7 +106,10 @@ int main() {
 
         int next_id = current_scene->get_next_scene_id();
         if (next_id != -1 && scenes.count(next_id) > 0) current_id = next_id;
-        else break;
+        else {
+            std::cout<< "No scene found with ID=" << next_id << ", exiting application" << std::endl;
+            break;
+        }
     }
     
     glfwTerminate();

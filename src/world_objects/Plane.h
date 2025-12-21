@@ -51,7 +51,7 @@ public:
     }
 
     void render() override {
-        if (!visible) return;
+        if (!can_render()) return;
         glBindVertexArray(this->VAO); 
         int num_indices = (n-1)*(n-1)*6;
         glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_INT, 0);

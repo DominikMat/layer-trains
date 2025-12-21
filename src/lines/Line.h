@@ -43,7 +43,7 @@ public:
     }
 
     void render() override {
-        if (!visible) return;
+        if (!can_render()) return;
         
         if (points.size() < 2) return;
        

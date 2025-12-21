@@ -95,6 +95,7 @@ public:
     void enable_shader() { shader->use(); }
     virtual void update_transform() { shader->setMatrix("transform", global_transform_matrix); }
     virtual int get_id() { return -1; }
+    virtual bool can_render() { return visible; }
 };
 
 #endif // OBJECT_H

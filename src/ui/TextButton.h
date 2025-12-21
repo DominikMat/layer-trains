@@ -52,7 +52,7 @@ public:
     void set_clicked_state(bool clicked) override {
         is_pressed = clicked && toggle;
         if (has_background) bg_panel->set_tint_colour( clicked ? Colour::DARK_GREY : Colour::WHITE );
-        else text_obj->set_tint_colour( clicked ? Colour::DARK_GREY : Colour::WHITE );
+        else text_obj->set_tint_colour( clicked ? Colour::BLACK : Colour::WHITE );
     }
     void set_hover_state(bool hover) override {
         if (is_pressed) return;

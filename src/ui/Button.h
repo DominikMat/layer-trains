@@ -89,7 +89,7 @@ public:
     }
 
     void render() override {
-        if (!visible) return;
+        if (!can_render()) return;
         
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
