@@ -22,7 +22,7 @@ struct Character {
 class UIText : public UIObject {
 private:
     std::string textString;
-    float font_scale; // Renamed to avoid confusion with Object::size (transform scale)
+    float font_scale;
     unsigned int VAO, VBO;
     int height_below_writing_line = 0;
     

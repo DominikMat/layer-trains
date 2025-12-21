@@ -27,15 +27,17 @@ public:
     void render() {
         
         glDisable(GL_DEPTH_TEST);
-
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
         int object_count_on_loop_start = objects.size();
         for (int i=0; i<object_count_on_loop_start; i++) {
             auto object_ptr = objects[i];
-
+            
             if (object_ptr->new_child_added) {
                 place(object_ptr); // will recursively place all children, skip already added
             }
-
+            
             object_ptr->calculate_transform_matrix();   
             object_ptr->enable_shader();
             object_ptr->update_transform();
@@ -43,8 +45,9 @@ public:
             object_ptr->render(); 
             object_ptr->disable_render_properties();
         }
-
+        
         glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
     }
 
     void place(UIObject* obj) {

@@ -20,6 +20,7 @@ public:
     bool custom_shader = false, visible = true, uses_texture = false, has_parent = false;
     bool render_to_world_pos = true, is_screen_object = false, render_props_changed = true;
     bool new_child_added = false;
+    bool animating = false;
     
     mat4 global_transform_matrix, local_transform_matrix;
     vec4 colour = Colour::PINK, tint_colour = Colour::WHITE;
@@ -37,8 +38,8 @@ public:
     virtual void construct() = 0;
     virtual void configure_render_properties() { 
         if (custom_shader || !render_props_changed) return; 
-        shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, opacity));
-        shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, opacity));
+        shader->setVec4("colour", vec4(colour.r,colour.g,colour.b, glm::clamp(opacity, 0.f, 1.f)));
+        shader->setVec4("tint_colour", vec4(tint_colour.r,tint_colour.g,tint_colour.b, glm::clamp(opacity, 0.f,1.f)));
         shader->setBool("useTexture", uses_texture);    
         render_props_changed = false;
     }
@@ -95,7 +96,10 @@ public:
     void enable_shader() { shader->use(); }
     virtual void update_transform() { shader->setMatrix("transform", global_transform_matrix); }
     virtual int get_id() { return -1; }
-    virtual bool can_render() { return visible; }
+    virtual bool can_render() { return visible || animating; }    
+    bool is_animating() { return animating; }
+    void set_animating(bool state) { animating = state; }
+
 };
 
 #endif // OBJECT_H

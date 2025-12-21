@@ -4,6 +4,9 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#define float_no_offset_flag FLT_MIN
+#define vec2_no_offset_flag vec2(FLT_MIN)
+
 enum AnimationPreset {
     ENTRY_LEFT, ENTRY_RIGHT, ENTRY_TOP, ENTRY_BOTTOM, 
     EXIT_LEFT, EXIT_RIGHT, EXIT_TOP, EXIT_BOTTOM, 
@@ -74,10 +77,12 @@ public:
         active = true;
 
         for (auto& c : v2_components) {
+            if (c.offset == vec2_no_offset_flag) continue;
             c.start = c.details.to_target ? *c.variable + c.offset : *c.variable; 
             c.end = c.details.to_target ? *c.variable : *c.variable + c.offset; 
         }
         for (auto& c : float_components) {
+            if (c.offset == float_no_offset_flag) continue;
             c.start = c.details.to_target ? *c.variable + c.offset : *c.variable; 
             c.end = c.details.to_target ? *c.variable : *c.variable + c.offset; 
         }
@@ -98,9 +103,31 @@ public:
         v2_components.push_back(component);
         full_duration = std::max(full_duration, duration_seconds);
     }
+    void add_animation_component(vec2& target, vec2 start, vec2 end, float duration_seconds, AnimationSmoothing smoothing = AnimationSmoothing::LINEAR, bool save_transform = false) {
+        V2AnimationComponent component = { &target, vec2_no_offset_flag };
+        component.start = start;
+        component.end = end;
+        component.details.to_target = false;
+        component.details.duration = duration_seconds;
+        component.details.smooth_fn_id = smoothing;
+        component.details.save_transform = save_transform;
+        v2_components.push_back(component);
+        full_duration = std::max(full_duration, duration_seconds);
+    }
     void add_animation_component(float& target, float offset, float duration_seconds, bool to_target = false, AnimationSmoothing smoothing = AnimationSmoothing::LINEAR, bool save_transform = false) {
         FloatAnimationComponent component = { &target, offset };
         component.details.to_target = to_target;
+        component.details.duration = duration_seconds;
+        component.details.smooth_fn_id = smoothing;
+        component.details.save_transform = save_transform;
+        float_components.push_back(component);
+        full_duration = std::max(full_duration, duration_seconds);
+    }
+    void add_animation_component(float& target, float start, float end, float duration_seconds, AnimationSmoothing smoothing = AnimationSmoothing::LINEAR, bool save_transform = false) {
+        FloatAnimationComponent component = { &target, float_no_offset_flag };
+        component.start = start;
+        component.end = end;
+        component.details.to_target = false;
         component.details.duration = duration_seconds;
         component.details.smooth_fn_id = smoothing;
         component.details.save_transform = save_transform;

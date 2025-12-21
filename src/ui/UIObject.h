@@ -27,7 +27,6 @@ protected:
         { AnimationPlace::OUTRO, nullptr }
     };
     
-    bool animating = false;
 
 public:
     UIAnchor anchor;
@@ -160,11 +159,11 @@ public:
         /* run animation */
         AnimationPlace type = state ? AnimationPlace::INTRO : AnimationPlace::OUTRO;
         if (animations[type]) { 
-            if (animating) {
+            if (is_animating()) {
                 for (auto& anim : animations) if (anim.second->is_active()) anim.second->stop();
             }
             animations[type]->start(); 
-            animating = true;
+            set_animating(true);
         }
     }
 
@@ -184,7 +183,7 @@ public:
                 anim->add_animation_component(opacity, -1.f, anim_duration, true, AnimationSmoothing::EASY_OUT);
                 break;
             case AnimationPreset::FADE_OUT:
-                anim->add_animation_component(opacity, 1.f, anim_duration, false, AnimationSmoothing::EASY_IN);
+                anim->add_animation_component(opacity, -1.f, anim_duration, false, AnimationSmoothing::EASY_IN);
                 break;
             default:
                 std::cout << "animation preset not found!" << std::endl;
@@ -198,19 +197,20 @@ public:
     }
 
     void update_animations(float dt) {
-        if (!animating) return; 
+        if (!is_animating()) return; 
 
-        animating = false;
+        bool is_animating_now = false;
         for (auto anim : animations) {
             if (anim.second) {
-                animating = animating || anim.second->is_active();
+                is_animating_now = is_animating_now || anim.second->is_active();
                 anim.second->update(dt);
             }
         }
 
-        if (animating) {
+        if (is_animating_now) {
             resize_and_reposition();
         }
+        set_animating(is_animating_now /* || (has_parent ? parent->is_animating() : false) */);
     }
 
     virtual void set_default_animations() {
