@@ -74,7 +74,7 @@ public:
             TextButton* lvl_btn = new TextButton(level_name.c_str(), 0.75f, Colour::WHITE, ButtonID::LEVEL_START+i,false);
             level_select_panel->add_item( lvl_btn );
         }
-        level_select_panel->set_visible(false);
+        level_select_panel->set_visible(false, true);
         level_select_panel->set_animation(AnimationPreset::ENTRY_RIGHT, AnimationPlace::INTRO);
         level_select_panel->set_animation(AnimationPreset::EXIT_RIGHT, AnimationPlace::OUTRO);
         screen_ui->place( level_select_panel );

@@ -27,8 +27,8 @@
 #include "TitleCardScene.h"
 #include "ScreenUI.h"
 #include "settings/ColourData.h"
-#include "Scene.h"
 #include "TerrainScene.h"
+#include "MapEditorScene.h"
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -44,8 +44,7 @@ public:
 
     Window(int scr_width, int scr_height, const char* window_title)
         : scr_width(scr_width), scr_height(scr_height), window_title(window_title)
-    {
-    }
+    {}
 
     void initGLFW() {
         glfwInit();

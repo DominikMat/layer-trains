@@ -150,13 +150,15 @@ public:
         if (active_texture != nullptr) set_texture(active_texture);
     }
 
-    void set_visible(bool state) override {
+    void set_visible(bool state, bool immidiate=false) override {
         Object::set_visible(state);
         for(auto* c : ui_children) {
-            c->set_visible(state);
+            c->set_visible(state, immidiate);
         }
         
         /* run animation */
+        if (immidiate) return;
+
         AnimationPlace type = state ? AnimationPlace::INTRO : AnimationPlace::OUTRO;
         if (animations[type]) { 
             if (is_animating()) {

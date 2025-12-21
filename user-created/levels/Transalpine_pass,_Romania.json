@@ -1,0 +1,44 @@
+{
+    "areas_data_path": "C:/Media/Projects/OpenGL/Layer_Trains/textures/terrain/transalpine_area_data.png",
+    "heightmap_path": "C:/Media/Projects/OpenGL/Layer_Trains/user-created/heightmaps/Transalpine_pass,_Romania_heightmap.png",
+    "max_height": 2500.0,
+    "min_height": 1003.0,
+    "resolution_x": -1,
+    "resolution_y": -100,
+    "snow_level": 1551.0,
+    "tags": [
+        {
+            "name": "Level Start",
+            "type": 1,
+            "uv_x": 0.699999988079071,
+            "uv_y": 0.009999999776482582
+        },
+        {
+            "name": "Level End",
+            "type": 2,
+            "uv_x": 0.009999999776482582,
+            "uv_y": 0.800000011920929
+        },
+        {
+            "name": "City One",
+            "type": 0,
+            "uv_x": 0.30000001192092896,
+            "uv_y": 0.2199999988079071
+        },
+        {
+            "name": "Dipla the city",
+            "type": 0,
+            "uv_x": 0.4749999940395355,
+            "uv_y": 0.8500000238418579
+        },
+        {
+            "name": "pretty mountain nature reserve",
+            "type": 0,
+            "uv_x": 0.8999999761581421,
+            "uv_y": 0.6499999761581421
+        }
+    ],
+    "title": "Transalpine pass, Romania",
+    "vertical_scale": 0.2881543040275574,
+    "water_level": 6.0
+}

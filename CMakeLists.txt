@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(FREETYPE_DIR "C:/Media/Projects/OpenGL/Libraries/freetype-2.14.1") 
 set(FREETYPE_INCLUDE_DIR_freetype2 "${FREETYPE_DIR}/include")
 set(FREETYPE_INCLUDE_DIR_ft2build "${FREETYPE_DIR}/include")
+set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/imgui)
 # set(FREETYPE_LIBRARY_RELEASE "${FREETYPE_DIR}/release/freetype.lib")
 # set(FREETYPE_LIBRARY_DEBUG "${FREETYPE_DIR}/debug/freetype.lib")
 
@@ -23,6 +24,17 @@ find_package(Freetype REQUIRED)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
+
+    # Add Core ImGui files
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    
+    # Add Backend files
+    ${IMGUI_DIR}/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/imgui_impl_opengl3.cpp
 )
 
 include_directories(${FREETYPE_INCLUDE_DIRS})
@@ -54,11 +66,13 @@ target_include_directories(Layer_Trains
         ${CMAKE_SOURCE_DIR}/src/user_interaction
         ${CMAKE_SOURCE_DIR}/src/settings
         ${CMAKE_SOURCE_DIR}/src/ui
+        ${CMAKE_SOURCE_DIR}/src/ui/imgui
         ${CMAKE_SOURCE_DIR}/src/terrain
         ${CMAKE_SOURCE_DIR}/src/path_drawer
         ${CMAKE_SOURCE_DIR}/src/scenes
         ${CMAKE_SOURCE_DIR}/src/lines
         ${CMAKE_SOURCE_DIR}/src/animation
+        ${CMAKE_SOURCE_DIR}/src/nlohmann
 )
 
 # (opcjonalnie) jeśli chcesz wydruki configure-time

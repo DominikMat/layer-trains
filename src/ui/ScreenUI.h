@@ -101,6 +101,7 @@ public:
 
     void clear_objects() {
         objects.clear();
+        button_callback = nullptr;
     }
 
     void set_new_window_size(float x, float y) {

@@ -5,12 +5,14 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <vector>
 #include "settings/Utility.h"
 #include "settings/Settings.h"
 #include "Window.h"
 
 const float DOUBLE_CLICK_WINDOW = 0.3f;
 using namespace glm;
+using WindowSizeCallback = std::function<void(vec2 new_size)>;
 
 enum DoubleClickState {
     IDLE=0, FIRST_CLICK_PRESSED=1, FIRST_CLICK_RELEASED=2, SECOND_CLICK_PRESSED=3, SECOND_CLICK_RELEASED=4
@@ -27,21 +29,21 @@ struct MouseClick {
 };
 
 class InputHandler {
-public:
+protected:
     bool simulation_paused = false, was_space_pressed = false, holding_shift = false;
     float scroll_value = 1.f, scroll_speed_multiplier = 10.f;
     vec2 mouse_position_normalized = vec2(0.f), last_mouse_position_pixels = vec2(0.f), 
-        mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f), window_size = vec2(0);     // Surowe piksele ekranu
+    mouse_position_pixels = vec2(0.f), mouse_position_pixels_inv_y = vec2(0.f), 
+    window_size = vec2(SCR_WIDTH,SCR_HEIGHT);
     
-    MouseClick mouse_left;
-    MouseClick mouse_right;
-    MouseClick mouse_middle;
-
+    MouseClick mouse_left, mouse_right, mouse_middle;
+    std::vector<WindowSizeCallback> window_size_callbacks;
+    
+public:
     static InputHandler *instance;
-
     InputHandler() { instance = this; }
 
-    void process_input(GLFWwindow *glfw_window, float dt, vec2 window_size){
+    void process_input(GLFWwindow *glfw_window, float dt){
 
         // shift
         holding_shift = glfwGetKey(glfw_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
@@ -120,6 +122,16 @@ public:
     bool get_simulation_paused() { return simulation_paused; }
     float get_scroll_value() { return scroll_value; }
     bool is_holding_shift() { return holding_shift; }
+
+    /* window size handling */
+    void set_window_resize_callback(WindowSizeCallback callback) { window_size_callbacks.push_back(callback); }
+    void clear_callbacks() { window_size_callbacks.clear(); }
+    void set_window_size(vec2 window_size) {
+        this->window_size = window_size;
+        for (auto callback : window_size_callbacks) {
+            if (callback) callback(window_size);
+        }
+    }
 
 private:
     void update_mouse_click_logic(MouseClick *state, int curr_val, float dt) {

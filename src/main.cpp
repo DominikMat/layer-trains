@@ -30,19 +30,21 @@ int main() {
 
     const std::unordered_map<int, Scene*> scenes = {
         { SceneID::TITLE_CARD, new TitleCardScene( &world, &camera, &screen_ui, &input_handler) },
+        { SceneID::MAP_EDITOR, new MapEditorScene ( window.get(), &world, &camera, &screen_ui, &input_handler) },
         { SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
     };
 
     // ==========================================================
     /* Render Loop */
 
-    int current_id = SceneID::TITLE_CARD; // Start with the first scene ID
+    int current_id = SceneID::TITLE_CARD;
 
     while (current_id != -1 && scenes.count(current_id) > 0) {
         // remove previous scene objects
         screen_ui.clear_objects();
         world.clear_objects();
         camera.clear_dependancies();
+        input_handler.clear_callbacks();
 
         // init current scene
         std::cout << std::endl << std::endl << "=============================" << std::endl 
@@ -58,39 +60,43 @@ int main() {
             float dt = current_time - last_frame_time;
             dt = dt > 0.2f ? .2f : dt; // make sure dt not massive on lag spike
             last_frame_time = current_time;
+            
             vec2 window_size = window.get_size();
+            bool window_size_changed = prev_window_size != window_size;
             
             /* Process user input  */
-            input_handler.process_input(window.get(), dt, window_size);
+            if (window_size_changed) input_handler.set_window_size(window_size);
+            input_handler.process_input(window.get(), dt);
             screen_ui.check_button_clicked(&input_handler);
             
             /* Update camera position for shaders */
-            camera.set_screen_size(window_size.x, window_size.y);
+            if (window_size_changed) camera.set_screen_size(window_size.x, window_size.y);
             camera.calculate_transform_matrix();
             camera.update_dependent_shader_view_matrix();
 
             /* Render to world position buffer texture */      
-            if (prev_window_size != window_size) world_pos_buffer_shader->resize_worldpos_buffer(window_size.x, window_size.y);
             if (world_pos_buffer_shader){
+                if (window_size_changed) world_pos_buffer_shader->resize_worldpos_buffer(window_size.x, window_size.y);
                 glBindFramebuffer(GL_FRAMEBUFFER, world_pos_buffer_shader->get_world_framebuffer());
                 window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
                 world_pos_buffer_shader->render_to_world_pos_buffer();
                 world.render(true);
             }
 
+            window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
+
             /* Current scene logic */
             current_scene->loop(dt);
             
             /* Final render */
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
             if(world_pos_buffer_shader) {
                 world_pos_buffer_shader->bind_world_pos_buffer();
                 world_pos_buffer_shader->send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
             }
             world.render();
 
-            if (prev_window_size != window_size) screen_ui.set_new_window_size(window_size.x, window_size.y);
+            if (window_size_changed) screen_ui.set_new_window_size(window_size.x, window_size.y);
             screen_ui.update_animations(dt);
             screen_ui.render();
             

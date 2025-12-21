@@ -5,6 +5,7 @@
 #include "glm/glm.hpp"
 #include "ColourData.h"
 
+
 #define MAX_TAG_AMOUNT 16
 #define SNOW_FALLOFF_RANGE 700.f // Distance above snow level where snow covers everything
 #define SNOW_MAX_STEEPNESS 0.15f  // How flat ground must be for snow at the lowest level

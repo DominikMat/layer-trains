@@ -81,7 +81,7 @@ public:
     
     // basic fucntions
     mat4 get_transform() {    return global_transform_matrix; }
-    virtual void set_visible(bool is_visible) { visible = is_visible; }
+    virtual void set_visible(bool is_visible, bool immidiate=false) { visible = is_visible; }
     virtual void set_parent(Object *parent) { if (!parent) { return; } has_parent = true; this->parent = parent; parent->add_child(this); }
     void add_child(Object *child) { children.push_back(child); new_child_added = true; }
     std::vector<Object*> get_children() { return children; }
