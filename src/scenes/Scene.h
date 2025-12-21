@@ -9,6 +9,11 @@
 #include "Camera.h"
 #include "ScreenUI.h"
 
+enum SceneID {
+    TITLE_CARD, MAP_EDITOR, 
+    LEVEL1, LEVEL2, LEVEL3, LEVEL4, LEVEL5, LEVEL6, LEVEL7, LEVEL8, 
+};
+
 class Scene
 {
 protected:
@@ -22,7 +27,7 @@ protected:
     vec4 background_colour = Colour::DEFAULT_RENDER_BACKGROUND;
 
     int next_scene_id = -1;
-    
+
 public:
 
     Scene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) 
@@ -32,7 +37,7 @@ public:
     virtual void loop(float dt) = 0;
     
     bool active() { return is_active; }
-    void end_scene(int next_scene_id = -1) { is_active = false; this->next_scene_id = next_scene_id; }
+    void end_scene(int next_scene_id) { is_active = false; this->next_scene_id = next_scene_id; }
     int get_next_scene_id() { return next_scene_id; }
 
     virtual Shader* get_world_pos_buffer_shader() { return NULL; }

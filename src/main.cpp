@@ -1,4 +1,5 @@
 #include <iostream>
+#include <unordered_map>
 #include "rendering/Window.h"
 
 InputHandler* InputHandler::instance = nullptr; 
@@ -27,15 +28,17 @@ int main() {
     // ==========================================================
     /* Create scenes */
 
-    const vector<Scene*> scenes = {
-        new TitleCardScene( &world, &camera, &screen_ui, &input_handler),
-        new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler)
+    const std::unordered_map<int, Scene*> scenes = {
+        { SceneID::TITLE_CARD, new TitleCardScene( &world, &camera, &screen_ui, &input_handler) },
+        { SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
     };
 
     // ==========================================================
     /* Render Loop */
 
-    for (int i=0; i<scenes.size(); i++){
+    int current_id = SceneID::TITLE_CARD; // Start with the first scene ID
+
+    while (current_id != -1 && scenes.count(current_id) > 0) {
         // remove previous scene objects
         screen_ui.clear_objects();
         world.clear_objects();
@@ -43,8 +46,8 @@ int main() {
 
         // init current scene
         std::cout << std::endl << std::endl << "=============================" << std::endl 
-            << "Starting scene nr " << (i+1) << std::endl << "=============================" << std::endl;
-        Scene* current_scene = scenes[i];
+            << "Starting scene nr " << (current_id) << std::endl << "=============================" << std::endl;
+        Scene* current_scene = scenes.at(current_id);
         current_scene->init();
         Shader *world_pos_buffer_shader = current_scene->get_world_pos_buffer_shader();
         vec4 bg_col = current_scene->get_background_colour();
@@ -101,7 +104,8 @@ int main() {
         }
 
         int next_id = current_scene->get_next_scene_id();
-        if (next_id != -1) i = next_id-1; // will be incremented in for loop
+        if (next_id != -1 && scenes.count(next_id) > 0) current_id = next_id;
+        else break;
     }
     
     glfwTerminate();

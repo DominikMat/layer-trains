@@ -76,7 +76,7 @@ public:
                 start_program_button->set_text("loading ...");
                 menu_list->recalculate_layout();
                 end_scene_flag = true;
-                next_scene_id = 1;
+                next_scene_id = SceneID::LEVEL1;
                 break;
         
             case ButtonID::CREDITS:
@@ -88,7 +88,7 @@ public:
                 map_editor_button->set_text("loading ...");
                 menu_list->recalculate_layout();
                 end_scene_flag = true;
-                next_scene_id = 1;
+                next_scene_id = SceneID::MAP_EDITOR;
                 break;       
         }
     }
