@@ -48,10 +48,16 @@ public:
             }
         );
 
-        set_background_colour(Colour::GREY);
-        
+        //set_background_colour(Colour::GREY);
+
+        /* background */
+        Panel* bg_panel = new Panel(Colour::PINK, vec2(0), vec2(SCR_WIDTH,SCR_HEIGHT));
+        bg_panel->set_anchor(UIAnchor::CENTER, vec2(0));
+        bg_panel->set_texture(new Texture("C:/Media/Projects/OpenGL/Layer_Trains/textures/title_bg.png"));
+        screen_ui->place( bg_panel );
+
         /* main menu list*/
-        menu_list = new UIList(20, Colour::DARK_GREY, 20);
+        menu_list = new UIList(20, vec4(vec3(Colour::DARK_GREY),0.3f), 20);
         menu_list->set_anchor( UIAnchor::TOP_LEFT, vec2(20,-20) );
         title_display = new UIText("Layer Trains Prototype ;)", 1.15f, Colour::WHITE);
         level_select_button = new TextButton("level select", 0.75f, Colour::WHITE, ButtonID::LEVEL_SELECT,true);
@@ -71,7 +77,7 @@ public:
         
         /* Level select right panel */
         level_select_panel = new UIList(20, Colour::DARK_GREY, 20);
-        level_select_panel->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(-250, 0));
+        level_select_panel->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(-50, 0));
         auto levels = lvl_manager->get_level_data();
         for (int i=0; i<levels.size(); i++) {
             std::string level_name = levels[i].title;

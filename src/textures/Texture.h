@@ -52,6 +52,7 @@ public:
             this->width = width;
             this->height = height;
             int colour_range = nrColourChannels == 4 ? GL_RGBA : nrColourChannels == 3 ? GL_RGB : GL_RED;
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             glTexImage2D(GL_TEXTURE_2D, 0, colour_range, width, height, 0, colour_range, GL_UNSIGNED_BYTE, data);
             glGenerateMipmap(GL_TEXTURE_2D);    
             stbi_image_free(data);

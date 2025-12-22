@@ -98,8 +98,8 @@ int main() {
                 world.render(true);
             }
 
-            window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
-
+            if (current_id == SceneID::MAP_EDITOR) window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
+            
             /* Current scene logic */
             current_scene->loop(dt);
             
@@ -109,6 +109,7 @@ int main() {
                 world_pos_buffer_shader->bind_world_pos_buffer();
                 world_pos_buffer_shader->send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
             }
+            if (current_id != SceneID::MAP_EDITOR) window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
             world.render();
 
             if (window_size_changed) screen_ui.set_new_window_size(window_size.x, window_size.y);
@@ -332,17 +333,7 @@ namespace fs = std::filesystem;
 class LevelManager {
 private:
     const std::string LEVELS_PATH = "C:/Media/Projects/OpenGL/Layer_Trains/user-created/levels/";
-    
-    // Internal storage to keep strings alive while TerrainData points to them
-    struct LevelStorage {
-        std::string title;
-        std::string hmap_path;
-        std::string area_path;
-        std::vector<TerrainTag> tags;
-        TerrainData data; 
-    };
-
-    std::vector<LevelStorage> loaded_levels;
+    std::vector<TerrainData> loaded_levels;
 
 public:
     LevelManager() {
@@ -351,7 +342,6 @@ public:
 
     void load_user_levels() {
         loaded_levels.clear();
-        
         for (const auto& entry : fs::directory_iterator(LEVELS_PATH)) {
             if (entry.path().extension() == ".json") {
                 load_single_level(entry.path().string());
@@ -361,76 +351,50 @@ public:
     }
 
     // Returns a vector of structs ready to be used by Scenes
-    std::vector<TerrainData> get_level_data() {
-        std::vector<TerrainData> result;
-        for (const auto& storage : loaded_levels) {
-            result.push_back(storage.data);
-        }
-        return result;
+    std::vector<TerrainData>& get_level_data() {
+        return loaded_levels; // Return by reference to avoid copying whole vectors
     }
 
 private:
     void load_single_level(const std::string& path) {
         std::ifstream i(path);
         if (!i.good()) return;
-
         json j;
-        try {
-            i >> j;
-        } catch (...) { return; }
+        i >> j;
 
-        LevelStorage store;
-        
-        // 1. Load Strings to persistent storage
-        store.title = j.value("title", "Untitled");
-        store.hmap_path = j.value("heightmap_path", "");
-        store.area_path = j.value("areas_data_path", "");
+        TerrainData data;
+        data.title = j.value("title", "Untitled");
+        data.heightmap_path = j.value("heightmap_path", "");
+        data.areas_data_path = j.value("areas_data_path", "");
 
         // 2. Load Basic Data
-        store.data.resolution_x = j.value("resolution_x", 1024);
-        store.data.resolution_y = j.value("resolution_y", 1024);
-        store.data.minimum_height_reach = j.value("min_height", 0.f);
-        store.data.maximum_height_reach = j.value("max_height", 1000.f);
-        store.data.vertical_scale = j.value("vertical_scale", 1.f);
-        store.data.water_level_height = j.value("water_level", 0.f);
-        store.data.snow_level_height = j.value("snow_level", 3000.f);
+        data.resolution_x = j.value("resolution_x", 1024);
+        data.resolution_y = j.value("resolution_y", 1024);
+        data.minimum_height_reach = j.value("min_height", 0.f);
+        data.maximum_height_reach = j.value("max_height", 1000.f);
+        data.vertical_scale = j.value("vertical_scale", 1.f);
+        data.water_level_height = j.value("water_level", 0.f);
+        data.snow_level_height = j.value("snow_level", 3000.f);
 
         // 3. Load Tags
         // Initialize default empty tags
         for(int k=0; k<MAX_TAG_AMOUNT; k++) {
-            store.data.tags[k].type = TerrainTagType::DISABLED;
-            store.data.tags[k].name = nullptr; 
+            data.tags[k].type = TerrainTagType::DISABLED;
+            data.tags[k].name = ""; 
         }
 
         if (j.contains("tags")) {
             int idx = 0;
             for (auto& element : j["tags"]) {
                 if (idx >= MAX_TAG_AMOUNT) break;
-                
-                TerrainTag t;
-                t.uv_x = element["uv_x"];
-                t.uv_y = element["uv_y"];
-                t.type = (TerrainTagType)element["type"];
-                
-                // Store string literal in vector to keep memory valid
-                // Note: In a real engine, we'd use std::string in TerrainTag, 
-                // but here we are adapting to the existing const char* struct.
-                // We will leak this specific tag name memory slightly if we reload often, 
-                // but for a game startup loader it's fine.
-                std::string* name_store = new std::string(element["name"]);
-                t.name = name_store->c_str(); 
-
-                store.data.tags[idx] = t;
+                data.tags[idx].uv_x = element["uv_x"];
+                data.tags[idx].uv_y = element["uv_y"];
+                data.tags[idx].name = element.value("name", "Tag");
+                data.tags[idx].type = (TerrainTagType)element["type"];
                 idx++;
             }
         }
-
-        // 4. Point Struct Pointers to Storage Strings
-        store.data.title = store.title.c_str();
-        store.data.heightmap_path = store.hmap_path.c_str();
-        store.data.areas_data_path = store.area_path.c_str();
-
-        loaded_levels.push_back(store);
+        loaded_levels.push_back(data);
     }
 };
 
@@ -444,6 +408,7 @@ private:
 #define TERRAINDATA_H
 
 #include <unordered_map>
+#include <string>
 #include "glm/glm.hpp"
 #include "ColourData.h"
 
@@ -459,15 +424,15 @@ enum TerrainTagType {
 struct TerrainTag {
     float uv_x;
     float uv_y;
-    const char* name = "unassigned";
+    std::string name = "unassigned";
     TerrainTagType type = TerrainTagType::DISABLED;
 };
 
 struct TerrainData
 {
-    const char* title;
-    const char* heightmap_path;
-    const char* areas_data_path;
+    std::string title;
+    std::string heightmap_path;
+    std::string areas_data_path;
 
     int resolution_x;
     int resolution_y;
@@ -1345,6 +1310,7 @@ private:
 #include "PathSpacialGrid.h"
 #include "Texture.h"
 #include <set>
+#include <string>
 
 using namespace glm;
 using namespace std;
@@ -1391,7 +1357,7 @@ public:
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
     
-    int create_path_handle_at_pos (vec2 local_pos, const char* name = "Path Handle") {
+    int create_path_handle_at_pos (vec2 local_pos, std::string name = "Path Handle") {
         Interactable *i = interactable_manager->create(
             vec3(0.f), name, InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE, node_id
         );
@@ -1430,7 +1396,7 @@ public:
         return nodes.back().handle_id;
     }
 
-    int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
+    int create_new_destination(std::string name, vec2 local_pos, NodeDestinationType destination_type) {
         int id = create_path_handle_at_pos(local_pos, name);
         nodes.back().destination_type = destination_type;
         return id;
@@ -2559,9 +2525,9 @@ private:
     int current_tile_y = 1;
 
     // --- GUI STATE ---
-    char title_buf[128] = "";
-    char tag_names[MAX_TAG_AMOUNT][64];
-    char external_import_path[256] = ""; // Buffer for external import
+    std::string title_buf = "";
+    std::string tag_names[MAX_TAG_AMOUNT];
+    std::string external_import_path = ""; // Buffer for external import
     
     // Import/Save
     std::vector<std::string> available_levels;
@@ -2804,7 +2770,7 @@ private:
                 draw_list->AddCircle(ImVec2(tx, ty), 6.0f, IM_COL32(255, 255, 255, 255));
                 
                 // Draw Text Label
-                std::string lbl = edit_data.tags[i].name ? edit_data.tags[i].name : "Tag";
+                std::string lbl = !edit_data.tags[i].name.empty() ? edit_data.tags[i].name : "Tag";
                 draw_list->AddText(ImVec2(tx + 8, ty - 10), IM_COL32(255, 255, 255, 255), lbl.c_str());
             }
         }
@@ -2831,9 +2797,13 @@ private:
 
         // IMPORT EXTERNAL
         ImGui::Text("Import Heightmap (PNG)");
-        ImGui::InputText("##Path", external_import_path, 256);
+        char path_buf[256];
+        strncpy_s(path_buf, external_import_path.c_str(), 255);
+        if (ImGui::InputText("##Path", path_buf, 256)) {
+            external_import_path = path_buf;
+        }
         if (ImGui::Button("Import from Path", ImVec2(-1, 0))) {
-            load_heightmap_to_memory(external_import_path);
+            load_heightmap_to_memory(external_import_path.c_str());
             status_msg = "Imported External PNG!";
             status_timer = 2.0f;
             status_is_error = false;
@@ -2870,7 +2840,13 @@ private:
 
         ImGui::Separator();
         ImGui::Text("Metadata");
-        ImGui::InputText("Title", title_buf, sizeof(title_buf));
+
+        char path_buf_2[sizeof(title_buf)];
+        strncpy_s(path_buf_2, title_buf.c_str(), sizeof(title_buf)-1);
+        if (ImGui::InputText("Title", path_buf_2, sizeof(title_buf))) {
+            title_buf = path_buf_2;
+        }
+
         ImGui::TextDisabled("File: %s", LEVELS_PATH.c_str());
 
         ImGui::Separator();
@@ -2897,14 +2873,19 @@ private:
                     tag_names[i][0] = '\0';
                 }
                 ImGui::SameLine();
-                if (ImGui::TreeNode(tag_names[i][0] == '\0' ? "Tag" : tag_names[i])) {
+                if (ImGui::TreeNode(tag_names[i][0] == '\0' ? "Tag" : tag_names[i].c_str())) {
                     // Type
                     int type = (int)edit_data.tags[i].type;
                     const char* types[] = { "Name", "Start", "End", "Disabled" };
                     ImGui::Combo("Type", &type, types, 4);
                     edit_data.tags[i].type = (TerrainTagType)type;
                     
-                    ImGui::InputText("Lbl", tag_names[i], 64);
+                    char path_buf_3[64];
+                    strncpy_s(path_buf_3, tag_names[i].c_str(), 63);
+                    if (ImGui::InputText("Lbl", path_buf_3, 64)){
+                        tag_names[i] = path_buf_3;
+                    }
+
                     ImGui::SliderFloat("U", &edit_data.tags[i].uv_x, 0.0f, 1.0f);
                     ImGui::SliderFloat("V", &edit_data.tags[i].uv_y, 0.0f, 1.0f);
                     ImGui::TreePop();
@@ -2916,7 +2897,7 @@ private:
                     if(edit_data.tags[i].type == TerrainTagType::DISABLED) {
                         edit_data.tags[i].type = TerrainTagType::NAME_TAG;
                         edit_data.tags[i].uv_x = 0.5f; edit_data.tags[i].uv_y = 0.5f;
-                        strncpy(tag_names[i], "New Tag", 64);
+                        tag_names[i] = "New Tag";
                         break;
                     }
                 }
@@ -3096,7 +3077,7 @@ private:
     void create_new_map() {
         // Reset to default struct
         edit_data = terrain_transalpine; 
-        strncpy(title_buf, "New Map", 128);
+        title_buf = "New Map";
         
         // Reset buffers
         hmap_width = 1024;
@@ -3152,9 +3133,9 @@ private:
     }
 
     void sync_buffers_from_struct() {
-        if(edit_data.title) strncpy(title_buf, edit_data.title, 128);
+        if(!edit_data.title.empty()) title_buf = edit_data.title;
         for(int i=0; i<MAX_TAG_AMOUNT; i++) {
-            if(edit_data.tags[i].name) strncpy(tag_names[i], edit_data.tags[i].name, 64);
+            if(!edit_data.tags[i].name.empty()) tag_names[i] = edit_data.tags[i].name, 64;
             else tag_names[i][0]='\0';
         }
     }
@@ -3213,7 +3194,7 @@ private:
         json j; i >> j;
         
         std::string t = j.value("title", "Untitled");
-        strncpy(title_buf, t.c_str(), 128);
+        title_buf =  t.c_str();
         edit_data.resolution_x = j.value("resolution_x", 1024);
         edit_data.resolution_y = j.value("resolution_y", 1024);
         edit_data.minimum_height_reach = j.value("min_height", 0.f);
@@ -3231,7 +3212,7 @@ private:
             for(auto& el : j["tags"]) {
                 if(idx>=MAX_TAG_AMOUNT) break;
                 std::string n = el["name"];
-                strncpy(tag_names[idx], n.c_str(), 64);
+                tag_names[idx] = n;
                 edit_data.tags[idx].uv_x = el["uv_x"];
                 edit_data.tags[idx].uv_y = el["uv_y"];
                 edit_data.tags[idx].type = (TerrainTagType)el["type"];
@@ -3702,8 +3683,14 @@ public:
             }
         );
 
-        set_background_colour(Colour::GREY);
-        
+        //set_background_colour(Colour::GREY);
+
+        /* background */
+        Panel* bg_panel = new Panel(Colour::PINK, vec2(0), vec2(SCR_WIDTH,SCR_HEIGHT));
+        bg_panel->set_anchor(UIAnchor::CENTER, vec2(0));
+        bg_panel->set_texture(new Texture("C:/Media/Projects/OpenGL/Layer_Trains/textures/title_bg.png"));
+        screen_ui->place( bg_panel );
+
         /* main menu list*/
         menu_list = new UIList(20, Colour::DARK_GREY, 20);
         menu_list->set_anchor( UIAnchor::TOP_LEFT, vec2(20,-20) );
@@ -4833,15 +4820,15 @@ private:
     CachedPathData cached_path_data;
 
 public:
-    ElevationLineDrawer(const char* heightmap_path, float heightmap_scale, bool use_16bit = false) 
+    ElevationLineDrawer(std::string heightmap_path, float heightmap_scale, bool use_16bit = false) 
         : heightmap_scale(heightmap_scale), is_16bit_data(use_16bit) 
     {        
         stbi_set_flip_vertically_on_load(true); 
         int width, height, nrChannels;
         if (is_16bit_data) {
-            height_data = stbi_load_16(heightmap_path, &width, &height, &nrChannels, 1);
+            height_data = stbi_load_16(heightmap_path.c_str(), &width, &height, &nrChannels, 1);
         } else {
-            height_data = stbi_load(heightmap_path, &width, &height, &nrChannels, 1);
+            height_data = stbi_load(heightmap_path.c_str(), &width, &height, &nrChannels, 1);
         }
         hmap_width = width; hmap_height = height;
 
@@ -5611,7 +5598,7 @@ public:
 
         // Load Area Data (Biome Map)
         int width, height, nrChannels;
-        unsigned char* map_data = stbi_load(terrain_data->areas_data_path, &width, &height, &nrChannels, 3);
+        unsigned char* map_data = stbi_load(terrain_data->areas_data_path.c_str(), &width, &height, &nrChannels, 3);
         if (!map_data) return ERROR_EMPTY_TEXTURE_RETURN;
 
         // Load Gradients
@@ -6065,6 +6052,7 @@ public:
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <string>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -6079,7 +6067,7 @@ public:
     unsigned int width = -1, height = -1;
 
     // generate from file path
-    Texture(const char* texturePath, bool flip_vert = true, bool load_16_bit = false)
+    Texture(std::string texturePath, bool flip_vert = true, bool load_16_bit = false)
     {
         glGenTextures(1, &ID);
         glBindTexture(GL_TEXTURE_2D, ID);
@@ -6091,7 +6079,7 @@ public:
         int width, height, nrColourChannels;
 
         if (load_16_bit) {
-            unsigned short* data = stbi_load_16(texturePath, &width, &height, &nrColourChannels, 1);
+            unsigned short* data = stbi_load_16(texturePath.c_str(), &width, &height, &nrColourChannels, 1);
             if (!data) { std::cout << "Failed to load 16bit texture" << std::endl; return; }
             this->width = width;
             this->height = height;
@@ -6100,7 +6088,7 @@ public:
             stbi_image_free(data);
 
         } else {
-            unsigned char *data = stbi_load(texturePath, &width, &height, &nrColourChannels, 0); 
+            unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &nrColourChannels, 0); 
             if (!data) { 
                 std::cout << "Failed to load texture at path: " << texturePath << std::endl; return; 
             }
@@ -6108,7 +6096,7 @@ public:
             this->height = height;
             int colour_range = nrColourChannels == 4 ? GL_RGBA : nrColourChannels == 3 ? GL_RGB : GL_RED;
             glTexImage2D(GL_TEXTURE_2D, 0, colour_range, width, height, 0, colour_range, GL_UNSIGNED_BYTE, data);
-            glGenerateMipmap(GL_TEXTURE_2D);    
+            //glGenerateMipmap(GL_TEXTURE_2D);    
             stbi_image_free(data);
         }
 
@@ -7104,6 +7092,7 @@ public:
     void set_texture(Texture *tex) override { 
         active_texture = tex;
         uses_texture = true;
+        shader->use();
         shader->setTexture("image", tex); 
         render_props_changed = true; 
     }
@@ -7755,6 +7744,7 @@ private:
 #include "ColourData.h" 
 #include <vector>
 #include <memory>
+#include <string>
 #include <glm/glm.hpp>
 #include <stdexcept>
 #include <functional>
@@ -7777,7 +7767,7 @@ class Interactable : public Object {
     float interaction_distance_sqr = 0.f;
     float highlight_distance_sqr = 0.f;
 
-    const char* name = "Interactable";
+    std::string name = "Interactable";
     int id;
     InteractionType type;
 
@@ -7785,7 +7775,7 @@ class Interactable : public Object {
 
     bool disabled = false;
 
-    Interactable(vec3 position, const char* name, InteractionType type, float interaction_distance, int id=-1) : 
+    Interactable(vec3 position, std::string name, InteractionType type, float interaction_distance, int id=-1) : 
         Object(position,vec3(interaction_distance)), 
         interaction_distance(interaction_distance),
         render_sphere(position, interaction_distance*INTERACTABLE_RENDER_RADUIS_MUTLIPLIER),
@@ -7871,6 +7861,7 @@ class Interactable : public Object {
 #include "World.h" // The base class for all renderable entities
 #include "Interactable.h" // The base class for all renderable entities
 #include <vector>
+#include <string>
 #include <memory>   // Required for std::unique_ptr
 #include <glm/glm.hpp>
 #include <stdexcept>
@@ -7903,7 +7894,7 @@ public:
             i->set_size(resize_mult * INTERACTABLE_INTERACT_DISTANCE * INTERACTABLE_RENDER_RADUIS_MUTLIPLIER);
         }
     }
-    Interactable* create(vec3 pos, const char* name, InteractionType interaction_type, float interact_dist, int id = -1) {
+    Interactable* create(vec3 pos, std::string name, InteractionType interaction_type, float interact_dist, int id = -1) {
         Interactable* intr = new Interactable(pos, name, interaction_type, interact_dist, id != -1 ? id : interactables.size());
         add(intr);
         return intr;

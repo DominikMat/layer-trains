@@ -141,6 +141,7 @@ public:
     void set_texture(Texture *tex) override { 
         active_texture = tex;
         uses_texture = true;
+        shader->use();
         shader->setTexture("image", tex); 
         render_props_changed = true; 
     }
