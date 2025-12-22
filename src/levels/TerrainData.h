@@ -2,6 +2,7 @@
 #define TERRAINDATA_H
 
 #include <unordered_map>
+#include <string>
 #include "glm/glm.hpp"
 #include "ColourData.h"
 
@@ -17,15 +18,15 @@ enum TerrainTagType {
 struct TerrainTag {
     float uv_x;
     float uv_y;
-    const char* name = "unassigned";
+    std::string name = "unassigned";
     TerrainTagType type = TerrainTagType::DISABLED;
 };
 
 struct TerrainData
 {
-    const char* title;
-    const char* heightmap_path;
-    const char* areas_data_path;
+    std::string title;
+    std::string heightmap_path;
+    std::string areas_data_path;
 
     int resolution_x;
     int resolution_y;

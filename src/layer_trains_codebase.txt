@@ -28,15 +28,25 @@ int main() {
     camera.set_min_orthographic_zoom(CAMERA_MIN_ZOOM); camera.set_max_orthographic_zoom(CAMERA_MAX_ZOOM);
     World world = World(&camera);
     ScreenUI screen_ui = ScreenUI(SCR_WIDTH, SCR_HEIGHT);
+    LevelManager lvl_manager = LevelManager();
+    lvl_manager.load_user_levels();
     
     // ==========================================================
     /* Create scenes */
 
-    const std::unordered_map<int, Scene*> scenes = {
-        { SceneID::TITLE_CARD, new TitleCardScene( &world, &camera, &screen_ui, &input_handler) },
+    std::unordered_map<int, Scene*> scenes = {
+        { SceneID::TITLE_CARD, new TitleCardScene( &lvl_manager, &world, &camera, &screen_ui, &input_handler) },
         { SceneID::MAP_EDITOR, new MapEditorScene ( window.get(), &world, &camera, &screen_ui, &input_handler) },
-        { SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
+        //{ SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
     };
+
+    // add terrain scenes 
+    int first_level = SceneID::LEVEL1;
+    int last_level = SceneID::LEVEL10;
+    for (auto& lvl : lvl_manager.get_level_data()) {
+        scenes[first_level++] = new TerrainScene(&lvl, &world, &camera, &screen_ui, &input_handler);
+        if (first_level > last_level) break;
+    }
 
     // ==========================================================
     /* Render Loop */
@@ -54,6 +64,7 @@ int main() {
         std::cout << std::endl << std::endl << "=============================" << std::endl 
             << "Starting scene nr " << (current_id) << std::endl << "=============================" << std::endl;
         Scene* current_scene = scenes.at(current_id);
+        current_scene->set_active();
         current_scene->init();
         Shader *world_pos_buffer_shader = current_scene->get_world_pos_buffer_shader();
         vec4 bg_col = current_scene->get_background_colour();
@@ -299,6 +310,282 @@ private:
 };
 
 #endif 
+
+======================================================================
+*** FILE: levels\LevelManager.h ***
+======================================================================
+
+#ifndef LEVEL_MANAGER_H
+#define LEVEL_MANAGER_H
+
+#include <string>
+#include <vector>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include "TerrainData.h"
+#include "json.hpp"
+
+using json = nlohmann::json;
+namespace fs = std::filesystem;
+
+class LevelManager {
+private:
+    const std::string LEVELS_PATH = "C:/Media/Projects/OpenGL/Layer_Trains/user-created/levels/";
+    
+    // Internal storage to keep strings alive while TerrainData points to them
+    struct LevelStorage {
+        std::string title;
+        std::string hmap_path;
+        std::string area_path;
+        std::vector<TerrainTag> tags;
+        TerrainData data; 
+    };
+
+    std::vector<LevelStorage> loaded_levels;
+
+public:
+    LevelManager() {
+        if (!fs::exists(LEVELS_PATH)) fs::create_directories(LEVELS_PATH);
+    }
+
+    void load_user_levels() {
+        loaded_levels.clear();
+        
+        for (const auto& entry : fs::directory_iterator(LEVELS_PATH)) {
+            if (entry.path().extension() == ".json") {
+                load_single_level(entry.path().string());
+            }
+        }
+        std::cout << "LevelManager: Loaded " << loaded_levels.size() << " user levels." << std::endl;
+    }
+
+    // Returns a vector of structs ready to be used by Scenes
+    std::vector<TerrainData> get_level_data() {
+        std::vector<TerrainData> result;
+        for (const auto& storage : loaded_levels) {
+            result.push_back(storage.data);
+        }
+        return result;
+    }
+
+private:
+    void load_single_level(const std::string& path) {
+        std::ifstream i(path);
+        if (!i.good()) return;
+
+        json j;
+        try {
+            i >> j;
+        } catch (...) { return; }
+
+        LevelStorage store;
+        
+        // 1. Load Strings to persistent storage
+        store.title = j.value("title", "Untitled");
+        store.hmap_path = j.value("heightmap_path", "");
+        store.area_path = j.value("areas_data_path", "");
+
+        // 2. Load Basic Data
+        store.data.resolution_x = j.value("resolution_x", 1024);
+        store.data.resolution_y = j.value("resolution_y", 1024);
+        store.data.minimum_height_reach = j.value("min_height", 0.f);
+        store.data.maximum_height_reach = j.value("max_height", 1000.f);
+        store.data.vertical_scale = j.value("vertical_scale", 1.f);
+        store.data.water_level_height = j.value("water_level", 0.f);
+        store.data.snow_level_height = j.value("snow_level", 3000.f);
+
+        // 3. Load Tags
+        // Initialize default empty tags
+        for(int k=0; k<MAX_TAG_AMOUNT; k++) {
+            store.data.tags[k].type = TerrainTagType::DISABLED;
+            store.data.tags[k].name = nullptr; 
+        }
+
+        if (j.contains("tags")) {
+            int idx = 0;
+            for (auto& element : j["tags"]) {
+                if (idx >= MAX_TAG_AMOUNT) break;
+                
+                TerrainTag t;
+                t.uv_x = element["uv_x"];
+                t.uv_y = element["uv_y"];
+                t.type = (TerrainTagType)element["type"];
+                
+                // Store string literal in vector to keep memory valid
+                // Note: In a real engine, we'd use std::string in TerrainTag, 
+                // but here we are adapting to the existing const char* struct.
+                // We will leak this specific tag name memory slightly if we reload often, 
+                // but for a game startup loader it's fine.
+                std::string* name_store = new std::string(element["name"]);
+                t.name = name_store->c_str(); 
+
+                store.data.tags[idx] = t;
+                idx++;
+            }
+        }
+
+        // 4. Point Struct Pointers to Storage Strings
+        store.data.title = store.title.c_str();
+        store.data.heightmap_path = store.hmap_path.c_str();
+        store.data.areas_data_path = store.area_path.c_str();
+
+        loaded_levels.push_back(store);
+    }
+};
+
+#endif
+
+======================================================================
+*** FILE: levels\TerrainData.h ***
+======================================================================
+
+#ifndef TERRAINDATA_H
+#define TERRAINDATA_H
+
+#include <unordered_map>
+#include "glm/glm.hpp"
+#include "ColourData.h"
+
+
+#define MAX_TAG_AMOUNT 16
+#define SNOW_FALLOFF_RANGE 700.f // Distance above snow level where snow covers everything
+#define SNOW_MAX_STEEPNESS 0.15f  // How flat ground must be for snow at the lowest level
+
+
+enum TerrainTagType {
+    NAME_TAG, LEVEL_START, LEVEL_END, DISABLED
+};
+struct TerrainTag {
+    float uv_x;
+    float uv_y;
+    const char* name = "unassigned";
+    TerrainTagType type = TerrainTagType::DISABLED;
+};
+
+struct TerrainData
+{
+    const char* title;
+    const char* heightmap_path;
+    const char* areas_data_path;
+
+    int resolution_x;
+    int resolution_y;
+
+    float minimum_height_reach;
+    float maximum_height_reach;
+    float vertical_scale;
+
+    float water_level_height = 0.f;
+    float snow_level_height = 3000.f;
+
+    TerrainTag tags[MAX_TAG_AMOUNT];
+};
+
+const TerrainData terrain_transalpine = {
+    /* title: */ "Transalpine pass, Romania",
+    /* heightmap_path: */ "C:/Media/Projects/OpenGL/Layer_Trains/textures/terrain/transalpine_heightmap.png",
+    /* areas_data_path: */ "C:/Media/Projects/OpenGL/Layer_Trains/textures/terrain/transalpine_area_data.png",
+    /* resolution_x: */ 1024,
+    /* resolution_y: */ 1024,
+    /* minimum_height_reach: */ 1000.f,
+    /* maximum_height_reach: */ 2500.f,
+    /* vertical_scale: */ 295.07f / 1024.f,
+    /* water_level_height: */ 0.f,
+    /* snow_level_height: */ 1500.f,
+
+    {
+        { 0.7f, 0.01f, "Level Start", TerrainTagType::LEVEL_START },
+        { 0.01f, 0.8f, "Level End", TerrainTagType::LEVEL_END},
+        { 0.3f, 0.22f, "City One", TerrainTagType::NAME_TAG},
+        { 0.475f, 0.85f, "Dipla the city", TerrainTagType::NAME_TAG},
+        { 0.9f, 0.65f, "pretty mountain nature reserve", TerrainTagType::NAME_TAG},
+    }
+};
+
+enum BlueRegions {
+    BLUE_RESERVED12 = 255, 
+    NATURE_RESERVE = 239,
+    CITY = 223,
+    BLUE_RESERVED0 = 207,
+    BLUE_RESERVED1 = 191,
+    BLUE_RESERVED2 = 175,
+    BLUE_RESERVED3 = 159,
+    BLUE_RESERVED4 = 127,
+    BLUE_RESERVED5 = 111,
+    BLUE_RESERVED6 = 95,
+    BLUE_RESERVED7 = 79,
+    BLUE_RESERVED8 = 63,
+    BLUE_RESERVED9 = 47,
+    BLUE_RESERVED10 = 31,
+    BLUE_RESERVED11 = 15,
+    BLUE_NONE = 0
+};
+enum GreenRegions {
+    GREEN_RESERVED0 = 255, 
+    FORREST = 239,
+    SAND = 223,
+    WATER = 207,
+    GREEN_RESERVED1 = 191,
+    GREEN_RESERVED2 = 175,
+    GREEN_RESERVED3 = 159,
+    GREEN_RESERVED4 = 127,
+    GREEN_RESERVED5 = 111,
+    GREEN_RESERVED6 = 95,
+    GREEN_RESERVED7 = 79,
+    GREEN_RESERVED8 = 63,
+    GREEN_RESERVED9 = 47,
+    GREEN_RESERVED10 = 31,
+    GREEN_RESERVED11 = 15,
+    GREEN_NONE = 0,
+};
+
+const std::unordered_map<int, glm::vec4> BLUE_REGION_COLOURS = {
+    { BlueRegions::BLUE_RESERVED12, Colour::TRANSPARENT }, // Interactable (Invisible on map, logic handled separately)
+    { BlueRegions::NATURE_RESERVE, Colour::GREEN }, // Nature Reserve (Dark Green tint)
+    { BlueRegions::CITY, Colour::YELLOW }, // City Area (Grey-Blue tint)
+    { BlueRegions::BLUE_RESERVED0,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED1,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED2,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED3,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED4,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED5,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED6,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED7,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED8,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED9,   Colour::TRANSPARENT } , // Default (No tint)
+    { BlueRegions::BLUE_RESERVED10,   Colour::TRANSPARENT },  // Default (No tint)
+    { BlueRegions::BLUE_RESERVED11,   Colour::TRANSPARENT },  // Default (No tint)
+    { BlueRegions::BLUE_NONE,   Colour::TRANSPARENT }  // Default (No tint)
+};
+const std::unordered_map<int, glm::vec4> GREEN_REGION_COLOURS = {
+    { GreenRegions::GREEN_RESERVED0, Colour::TRANSPARENT }, // Forest
+    { GreenRegions::FORREST, glm::vec4(0.76f, 0.70f, 0.50f, 1.0f) }, // Sand
+    { GreenRegions::SAND, glm::vec4(0.00f, 0.30f, 0.70f, 1.0f) }, // Water
+    { GreenRegions::WATER,   Colour::SKY_BLUE },  // Default grass/ground
+    { GreenRegions::GREEN_RESERVED1,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED2,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED3,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED4,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED5,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED6,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED7,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED8,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED9,   Colour::TRANSPARENT } , // Default (No tint)
+    { GreenRegions::GREEN_RESERVED10,   Colour::TRANSPARENT },  // Default (No tint)
+    { GreenRegions::GREEN_RESERVED11,   Colour::TRANSPARENT },  // Default (No tint)
+    { GreenRegions::GREEN_NONE,   Colour::TRANSPARENT }  // Default grass/ground
+};
+
+
+// 3. BORDER SETTINGS
+
+#define BLUE_REGION_OPACITY 0.15f
+#define GREEN_REGION_OPACITY 0.15f
+
+const glm::vec4 BORDER_COLOUR = glm::vec4(0.f,0.f,0.f,BLUE_REGION_OPACITY*3.f);
+
+#endif
 
 ======================================================================
 *** FILE: lines\BezierLine2D.h ***
@@ -2075,6 +2362,7 @@ private:
 #include "settings/ColourData.h"
 #include "TerrainScene.h"
 #include "MapEditorScene.h"
+#include "LevelManager.h"
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -2185,24 +2473,45 @@ private:
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <random>
+
+// Project Dependencies
 #include "Scene.h"
 #include "TerrainData.h"
 #include "Texture.h" 
+#include "textures/TextureData.h" // For gradient paths
+
+// External Libs
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "json.hpp"
 
-// Image writing for heightmap saving
+// Image writing
 #ifndef STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #endif
 
-// Image loading for initial heightmap load
-//#include "stb_image.h" 
+// Image loading
+#ifndef STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h" 
+#endif
 
 namespace fs = std::filesystem;
+
+enum class BrushShape {
+    CIRCLE,
+    OVAL_H,
+    OVAL_V,
+    NOISE_DOTS,
+    NOISE_LINES
+};
+
+struct MapTile {
+    std::string filename;
+    bool loaded = false;
+};
 
 class MapEditorScene : public Scene
 {
@@ -2219,20 +2528,42 @@ private:
     // Data being edited
     TerrainData edit_data;
 
-    // Painter State
-    std::vector<unsigned char> heightmap_pixels; // Raw 8-bit grayscale data
+    // --- PAINTER STATE ---
+    std::vector<unsigned char> heightmap_pixels; // Raw 8-bit grayscale
+    std::vector<unsigned char> colourmap_pixels; // RGB Preview
     GLuint heightmap_tex_id = 0;
+    GLuint colourmap_tex_id = 0;
+    
     int hmap_width = 1024;
     int hmap_height = 1024;
     
+    // Brush
     float brush_size = 50.0f;
-    float brush_strength = 2.0f; // Height change per frame
+    float brush_strength = 5.0f;
+    BrushShape current_brush = BrushShape::CIRCLE;
+    
+    // View
+    bool show_colour_preview = false;
+    bool show_tags_preview = true;
 
-    // GUI State
+    // Gradients for Color generation (Loaded to RAM for CPU processing)
+    std::vector<glm::vec3> grad_elev;
+    std::vector<glm::vec3> grad_steep;
+    std::vector<glm::vec3> grad_water;
+
+    // --- TILEMAP STATE ---
+    static const int GRID_ROWS = 3;
+    static const int GRID_COLS = 3;
+    MapTile tile_grid[GRID_ROWS][GRID_COLS];
+    int current_tile_x = 1;
+    int current_tile_y = 1;
+
+    // --- GUI STATE ---
     char title_buf[128] = "";
     char tag_names[MAX_TAG_AMOUNT][64];
+    char external_import_path[256] = ""; // Buffer for external import
     
-    // Import/Save State
+    // Import/Save
     std::vector<std::string> available_levels;
     int selected_level_idx = -1;
     
@@ -2240,6 +2571,9 @@ private:
     std::string status_msg = "";
     float status_timer = 0.0f;
     bool status_is_error = false;
+
+    /* other */
+    bool initalized = false;
 
 public:
 
@@ -2250,17 +2584,25 @@ public:
         if (!fs::exists(LEVELS_PATH)) fs::create_directories(LEVELS_PATH);
         if (!fs::exists(HEIGHTMAPS_PATH)) fs::create_directories(HEIGHTMAPS_PATH);
 
-        // 2. Load Default Data
+        // 2. Load Gradients into memory for fast CPU preview generation
+        load_gradients_to_ram();
+
+        // 3. Load Default Data
         edit_data = terrain_transalpine; 
-        
-        // 3. Load Initial Heightmap into Memory for Painting
         load_heightmap_to_memory(edit_data.heightmap_path);
         
         sync_buffers_from_struct();
         refresh_level_list();
+
+        // Init Tilemap names
+        for(int y=0; y<GRID_ROWS; y++) 
+            for(int x=0; x<GRID_COLS; x++) 
+                tile_grid[y][x].filename = "tile_" + std::to_string(x) + "_" + std::to_string(y);
     }
     
     void init( ) override {
+        if (initalized) return;
+        initalized = true;
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -2271,24 +2613,26 @@ public:
     }
 
     void loop(float dt) override {
-        // Prevent crash on minimize (width/height = 0)
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         if (w == 0 || h == 0) return;
 
-        // Update Timers
         if (status_timer > 0.0f) status_timer -= dt;
 
-        // Render World (Optional, if you want to see the 3D preview behind UI)
-        // world->render(); 
-
-        // ImGui Frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        draw_left_panel();  // Painter
-        draw_right_panel(); // Settings
+        // --- LAYOUT CALCULATION ---
+        float left_w = w * 0.2f;
+        float right_w = w * 0.2f;
+        float center_w = w * 0.6f;
+        float full_h = (float)h;
+
+        // Draw Panels
+        draw_left_panel(0, 0, left_w, full_h);
+        draw_center_panel(left_w, 0, center_w, full_h);
+        draw_right_panel(left_w + center_w, 0, right_w, full_h);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -2296,6 +2640,7 @@ public:
 
     ~MapEditorScene() {
         if (heightmap_tex_id != 0) glDeleteTextures(1, &heightmap_tex_id);
+        if (colourmap_tex_id != 0) glDeleteTextures(1, &colourmap_tex_id);
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -2304,76 +2649,211 @@ public:
 private:
 
     // =========================================================
-    // PANELS
+    // PANEL 1: TOOLS (LEFT)
     // =========================================================
-
-    void draw_left_panel() {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        float panel_width = 450.0f;
+    void draw_left_panel(float x, float y, float w, float h) {
+        ImGui::SetNextWindowPos(ImVec2(x, y));
+        ImGui::SetNextWindowSize(ImVec2(w, h));
         
-        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y));
-        ImGui::SetNextWindowSize(ImVec2(panel_width, viewport->Size.y));
+        ImGui::Begin("Tools", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
         
-        ImGui::Begin("Heightmap Painter", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+        ImGui::TextDisabled("MAP EDITOR TOOLKIT");
+        ImGui::Separator();
 
+        // --- VIEW SETTINGS ---
+        ImGui::Text("View Mode");
+        if (ImGui::Button("Heightmap", ImVec2(w * 0.45f, 0))) show_colour_preview = false;
+        ImGui::SameLine();
+        if (ImGui::Button("Colormap", ImVec2(w * 0.45f, 0))) {
+            generate_colour_map_preview();
+            show_colour_preview = true;
+        }
+        
+        // RECOLOUR BUTTON
+        if (ImGui::Button("Force Recolour", ImVec2(-1, 0))) {
+            generate_colour_map_preview();
+            show_colour_preview = true; // Automatically switch to color view
+        }
+
+        ImGui::Checkbox("Show Tag Markers", &show_tags_preview);
+        
+        ImGui::Dummy(ImVec2(0, 10));
+        ImGui::Separator();
+
+        // --- BRUSH SETTINGS ---
         ImGui::Text("Brush Settings");
         ImGui::SliderFloat("Size", &brush_size, 1.0f, 200.0f);
-        ImGui::SliderFloat("Strength", &brush_strength, 0.1f, 10.0f);
+        ImGui::SliderFloat("Strength", &brush_strength, 0.1f, 20.0f);
         
+        ImGui::Text("Shape:");
+        if (ImGui::RadioButton("Circle", current_brush == BrushShape::CIRCLE)) current_brush = BrushShape::CIRCLE;
+        if (ImGui::RadioButton("Oval (H)", current_brush == BrushShape::OVAL_H)) current_brush = BrushShape::OVAL_H;
+        if (ImGui::RadioButton("Oval (V)", current_brush == BrushShape::OVAL_V)) current_brush = BrushShape::OVAL_V;
+        if (ImGui::RadioButton("Noise (Dots)", current_brush == BrushShape::NOISE_DOTS)) current_brush = BrushShape::NOISE_DOTS;
+        if (ImGui::RadioButton("Noise (Lines)", current_brush == BrushShape::NOISE_LINES)) current_brush = BrushShape::NOISE_LINES;
+
+        ImGui::Dummy(ImVec2(0, 10));
         ImGui::Separator();
-        ImGui::Text("2D View (Left: Raise, Right: Lower)");
 
-        // Display Texture
-        ImVec2 avail = ImGui::GetContentRegionAvail();
-        float aspect = (float)hmap_width / (float)hmap_height;
-        float image_w = avail.x;
-        float image_h = image_w / aspect;
-
-        ImVec2 p_min = ImGui::GetCursorScreenPos();
-        ImGui::Image((void*)(intptr_t)heightmap_tex_id, ImVec2(image_w, image_h));
+        // --- TILEMAP SYSTEM ---
+        ImGui::Text("Tilemap Manager");
         
-        // Handle Input
-        if (ImGui::IsItemHovered()) {
-            // Calculate UV of mouse
-            ImVec2 mouse_pos = ImGui::GetMousePos();
-            float rel_x = mouse_pos.x - p_min.x;
-            float rel_y = mouse_pos.y - p_min.y;
-            
-            float u = rel_x / image_w;
-            float v = rel_y / image_h;
+        // Draw 3x3 Grid
+        float grid_size = w - 30; // Padding
+        float slot_size = grid_size / 3.0f;
+        
+        for (int row = 0; row < GRID_ROWS; row++) {
+            for (int col = 0; col < GRID_COLS; col++) {
+                ImGui::PushID(row * GRID_COLS + col);
+                
+                bool is_active = (row == current_tile_y && col == current_tile_x);
+                if (is_active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+                
+                std::string lbl = std::to_string(col) + "," + std::to_string(row);
+                if (ImGui::Button(lbl.c_str(), ImVec2(slot_size - 5, slot_size - 5))) {
+                    // Switch tile logic here (save current, load new)
+                    current_tile_x = col;
+                    current_tile_y = row;
+                    // In real app: save_current(); load_tile(tile_grid[row][col].filename);
+                }
+                
+                if (is_active) ImGui::PopStyleColor();
+                
+                if (col < GRID_COLS - 1) ImGui::SameLine();
+                ImGui::PopID();
+            }
+        }
+        ImGui::TextDisabled("Current Tile: %d, %d", current_tile_x, current_tile_y);
 
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                apply_brush(u, v, true);
-            }
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-                apply_brush(u, v, false);
-            }
+        ImGui::Separator();
+        ImGui::Separator();
+
+        if (ImGui::Button("Return to main menu", ImVec2(w * 0.8f, 0))) {
+            end_scene(SceneID::TITLE_CARD);
         }
 
         ImGui::End();
     }
 
-    void draw_right_panel() {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        float panel_width = 400.0f;
-        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - panel_width, viewport->Pos.y));
-        ImGui::SetNextWindowSize(ImVec2(panel_width, viewport->Size.y));
+    // =========================================================
+    // PANEL 2: PREVIEW (CENTER)
+    // =========================================================
+    void draw_center_panel(float x, float y, float w, float h) {
+        ImGui::SetNextWindowPos(ImVec2(x, y));
+        ImGui::SetNextWindowSize(ImVec2(w, h));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0)); // No padding for full view
         
-        ImGui::Begin("Terrain Properties", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("Preview", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+        
+        // Decide texture to show
+        GLuint tex_id = show_colour_preview ? colourmap_tex_id : heightmap_tex_id;
+        
+        // Calculate Aspect Ratio to fit in center window
+        ImVec2 content_size = ImGui::GetContentRegionAvail();
+        float aspect = (float)hmap_width / (float)hmap_height;
+        float draw_w = content_size.x;
+        float draw_h = draw_w / aspect;
+        
+        // If height is too big, scale by height
+        if (draw_h > content_size.y) {
+            draw_h = content_size.y;
+            draw_w = draw_h * aspect;
+        }
 
-        // --- Header / Save / Load ---
-        if (ImGui::Button("Save Level", ImVec2(120, 30))) save_level();
+        // Center the image
+        float offset_x = (content_size.x - draw_w) * 0.5f;
+        float offset_y = (content_size.y - draw_h) * 0.5f;
+        ImGui::SetCursorPos(ImVec2(offset_x, offset_y));
+
+        ImVec2 img_start = ImGui::GetCursorScreenPos();
+        ImGui::Image((void*)(intptr_t)tex_id, ImVec2(draw_w, draw_h));
+
+        // --- INTERACTION ---
+        if (ImGui::IsItemHovered()) {
+            ImVec2 mouse_pos = ImGui::GetMousePos();
+            float u = (mouse_pos.x - img_start.x) / draw_w;
+            float v = (mouse_pos.y - img_start.y) / draw_h;
+
+            // Draw Brush Preview
+            ImDrawList* draw_list = ImGui::GetWindowDrawList();
+            float preview_radius = (brush_size / (float)hmap_width) * draw_w; 
+            
+            if (current_brush == BrushShape::OVAL_H) 
+                draw_list->AddEllipse(mouse_pos, ImVec2(preview_radius * 2.0f, preview_radius * 0.5f), IM_COL32(255, 255, 0, 200));
+            else if (current_brush == BrushShape::OVAL_V) 
+                draw_list->AddEllipse(mouse_pos, ImVec2(preview_radius * 0.5f, preview_radius * 2.0f), IM_COL32(255, 255, 0, 200));
+            else 
+                draw_list->AddCircle(mouse_pos, preview_radius, IM_COL32(255, 255, 0, 200));
+
+            // Apply Paint
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) apply_brush(u, v, true);
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) apply_brush(u, v, false);
+        }
+
+        // --- TAG PREVIEW ---
+        if (show_tags_preview) {
+            ImDrawList* draw_list = ImGui::GetWindowDrawList();
+            for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+                if (edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
+                
+                float tx = img_start.x + edit_data.tags[i].uv_x * draw_w;
+                float ty = img_start.y + (1.f-edit_data.tags[i].uv_y) * draw_h;
+                
+                // Draw Dot
+                draw_list->AddCircleFilled(ImVec2(tx, ty), 5.0f, IM_COL32(255, 0, 0, 255));
+                draw_list->AddCircle(ImVec2(tx, ty), 6.0f, IM_COL32(255, 255, 255, 255));
+                
+                // Draw Text Label
+                std::string lbl = edit_data.tags[i].name ? edit_data.tags[i].name : "Tag";
+                draw_list->AddText(ImVec2(tx + 8, ty - 10), IM_COL32(255, 255, 255, 255), lbl.c_str());
+            }
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
+    // =========================================================
+    // PANEL 3: SETTINGS (RIGHT)
+    // =========================================================
+    void draw_right_panel(float x, float y, float w, float h) {
+        ImGui::SetNextWindowPos(ImVec2(x, y));
+        ImGui::SetNextWindowSize(ImVec2(w, h));
         
-        ImGui::SameLine();
+        ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+
+        // CREATE NEW
+        if (ImGui::Button("Create New Map", ImVec2(-1, 30))) {
+            create_new_map();
+        }
         
-        // Import Dropdown
-        ImGui::PushItemWidth(150);
+        ImGui::Separator();
+
+        // IMPORT EXTERNAL
+        ImGui::Text("Import Heightmap (PNG)");
+        ImGui::InputText("##Path", external_import_path, 256);
+        if (ImGui::Button("Import from Path", ImVec2(-1, 0))) {
+            load_heightmap_to_memory(external_import_path);
+            status_msg = "Imported External PNG!";
+            status_timer = 2.0f;
+            status_is_error = false;
+        }
+
+        ImGui::Separator();
+
+        // SAVE
+        if (ImGui::Button("Save JSON & PNG", ImVec2(-1, 30))) save_level();
+        
+        ImGui::Separator();
+        ImGui::Text("Edit Existing");
+        ImGui::PushItemWidth(-1);
+        
         const char* preview = (selected_level_idx >= 0 && selected_level_idx < available_levels.size()) 
-                              ? available_levels[selected_level_idx].c_str() 
-                              : "Select Level...";
+                              ? available_levels[selected_level_idx].c_str() : "Select Level...";
+        
         if (ImGui::BeginCombo("##import", preview)) {
             for (int i = 0; i < available_levels.size(); i++) {
-                const bool is_selected = (selected_level_idx == i);
+                bool is_selected = (selected_level_idx == i);
                 if (ImGui::Selectable(available_levels[i].c_str(), is_selected)) {
                     selected_level_idx = i;
                     load_level(available_levels[i]);
@@ -2383,98 +2863,59 @@ private:
             ImGui::EndCombo();
         }
         ImGui::PopItemWidth();
-        
-        ImGui::SameLine();
-        if (ImGui::Button("R")) refresh_level_list(); // Refresh button
 
-        // Feedback Message
         if (status_timer > 0.0f) {
-            ImVec4 col = status_is_error ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
-            ImGui::TextColored(col, "%s", status_msg.c_str());
-        } else {
-            ImGui::Text(""); // Spacer
+            ImGui::TextColored(status_is_error ? ImVec4(1,0,0,1) : ImVec4(0,1,0,1), "%s", status_msg.c_str());
         }
 
         ImGui::Separator();
-
-        // --- Metadata ---
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Level Title");
-        ImGui::InputText("##Title", title_buf, sizeof(title_buf));
-        
-        // Auto-generated paths display (Read-only)
-        std::string safe_title = std::string(title_buf);
-        std::replace(safe_title.begin(), safe_title.end(), ' ', '_');
-        ImGui::TextDisabled("Save Path: %s%s.json", LEVELS_PATH.c_str(), safe_title.c_str());
+        ImGui::Text("Metadata");
+        ImGui::InputText("Title", title_buf, sizeof(title_buf));
+        ImGui::TextDisabled("File: %s", LEVELS_PATH.c_str());
 
         ImGui::Separator();
-
-        // --- Physics ---
-        if (ImGui::CollapsingHeader("Dimensions & Scale", ImGuiTreeNodeFlags_DefaultOpen)) {
-            // Validation: Keep > 0
-            if (ImGui::InputInt("Res X", &edit_data.resolution_x)) 
-                edit_data.resolution_x = std::max(128, edit_data.resolution_x);
-            if (ImGui::InputInt("Res Y", &edit_data.resolution_y)) 
-                edit_data.resolution_y = std::max(128, edit_data.resolution_y);
-            
-            ImGui::DragFloat("Min Height", &edit_data.minimum_height_reach, 1.0f, 0.0f, 10000.0f);
-            ImGui::DragFloat("Max Height", &edit_data.maximum_height_reach, 1.0f, 0.0f, 10000.0f);
-            
-            // Scale shouldn't be negative
-            if (ImGui::InputFloat("Vertical Scale", &edit_data.vertical_scale, 0.0001f, 0.001f, "%.6f"))
-                edit_data.vertical_scale = std::max(0.00001f, edit_data.vertical_scale);
+        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::InputInt("Res X", &edit_data.resolution_x);
+            ImGui::InputInt("Res Y", &edit_data.resolution_y);
+            ImGui::DragFloat("Min H", &edit_data.minimum_height_reach);
+            ImGui::DragFloat("Max H", &edit_data.maximum_height_reach);
+            ImGui::InputFloat("Scale", &edit_data.vertical_scale, 0.0001f);
         }
 
-        // --- Environment ---
-        if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
-             ImGui::SliderFloat("Water Level", &edit_data.water_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
-             ImGui::SliderFloat("Snow Level", &edit_data.snow_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
+        if (ImGui::CollapsingHeader("Biome", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::SliderFloat("Water", &edit_data.water_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
+            ImGui::SliderFloat("Snow", &edit_data.snow_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
         }
 
-        // --- Tags ---
-        if (ImGui::CollapsingHeader("Terrain Tags", ImGuiTreeNodeFlags_DefaultOpen)) {
-            
-            // List active tags
+        if (ImGui::CollapsingHeader("Tags")) {
             for (int i = 0; i < MAX_TAG_AMOUNT; i++) {
                 if (edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
-
                 ImGui::PushID(i);
                 
-                // Delete Button
                 if (ImGui::Button("X")) {
                     edit_data.tags[i].type = TerrainTagType::DISABLED;
                     tag_names[i][0] = '\0';
                 }
                 ImGui::SameLine();
-
-                // Tree Node for details
-                if (ImGui::TreeNode(tag_names[i][0] == '\0' ? "Unnamed Tag" : tag_names[i])) {
-                    
+                if (ImGui::TreeNode(tag_names[i][0] == '\0' ? "Tag" : tag_names[i])) {
                     // Type
-                    const char* types[] = { "Name Tag", "Level Start", "Level End", "Disabled" };
-                    int current_type = (int)edit_data.tags[i].type;
-                    if (ImGui::Combo("Type", &current_type, types, IM_ARRAYSIZE(types))) {
-                        edit_data.tags[i].type = (TerrainTagType)current_type;
-                    }
-
-                    // Name
-                    ImGui::InputText("Label", tag_names[i], sizeof(tag_names[i]));
-
-                    // Position
-                    ImGui::SliderFloat("UV X", &edit_data.tags[i].uv_x, 0.0f, 1.0f);
-                    ImGui::SliderFloat("UV Y", &edit_data.tags[i].uv_y, 0.0f, 1.0f);
+                    int type = (int)edit_data.tags[i].type;
+                    const char* types[] = { "Name", "Start", "End", "Disabled" };
+                    ImGui::Combo("Type", &type, types, 4);
+                    edit_data.tags[i].type = (TerrainTagType)type;
                     
+                    ImGui::InputText("Lbl", tag_names[i], 64);
+                    ImGui::SliderFloat("U", &edit_data.tags[i].uv_x, 0.0f, 1.0f);
+                    ImGui::SliderFloat("V", &edit_data.tags[i].uv_y, 0.0f, 1.0f);
                     ImGui::TreePop();
                 }
                 ImGui::PopID();
             }
-
-            // Add New Tag Button
-            if (ImGui::Button("+ Add New Tag", ImVec2(-1, 0))) {
-                for (int i = 0; i < MAX_TAG_AMOUNT; i++) {
-                    if (edit_data.tags[i].type == TerrainTagType::DISABLED) {
+            if (ImGui::Button("Add Tag")) {
+                for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+                    if(edit_data.tags[i].type == TerrainTagType::DISABLED) {
                         edit_data.tags[i].type = TerrainTagType::NAME_TAG;
-                        edit_data.tags[i].uv_x = 0.5f;
-                        edit_data.tags[i].uv_y = 0.5f;
+                        edit_data.tags[i].uv_x = 0.5f; edit_data.tags[i].uv_y = 0.5f;
                         strncpy(tag_names[i], "New Tag", 64);
                         break;
                     }
@@ -2486,44 +2927,71 @@ private:
     }
 
     // =========================================================
-    // LOGIC
+    // BRUSH LOGIC
     // =========================================================
 
     void apply_brush(float u, float v, bool raise) {
         if (heightmap_pixels.empty()) return;
 
-        int center_x = (int)(u * hmap_width);
-        int center_y = (int)(v * hmap_height);
-        int radius = (int)brush_size;
-        int radius_sq = radius * radius;
+        int cx = (int)(u * hmap_width);
+        int cy = (int)(v * hmap_height);
+        float radius = brush_size;
         
+        // Bounds check optimized for loop range
+        int start_y = std::max(0, (int)(cy - radius * 2));
+        int end_y = std::min(hmap_height, (int)(cy + radius * 2));
+        int start_x = std::max(0, (int)(cx - radius * 2));
+        int end_x = std::min(hmap_width, (int)(cx + radius * 2));
+
         bool changed = false;
 
-        // Bounding box iteration
-        for (int y = center_y - radius; y <= center_y + radius; y++) {
-            for (int x = center_x - radius; x <= center_x + radius; x++) {
+        for (int y = start_y; y < end_y; y++) {
+            for (int x = start_x; x < end_x; x++) {
                 
-                // Check Bounds
-                if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) continue;
+                float dx = (float)(x - cx);
+                float dy = (float)(y - cy);
+                float dist_sq = dx*dx + dy*dy;
+                float falloff = 0.0f;
 
-                // Circular Brush
-                int dx = x - center_x;
-                int dy = y - center_y;
-                if (dx*dx + dy*dy > radius_sq) continue;
+                // --- SHAPE LOGIC ---
+                switch (current_brush) {
+                    case BrushShape::CIRCLE:
+                        if (dist_sq > radius * radius) continue;
+                        falloff = 1.0f - (sqrt(dist_sq) / radius);
+                        break;
+                    
+                    case BrushShape::OVAL_H: // Horizontal stretch
+                        if ((dx*dx)/(radius*radius*4.0f) + (dy*dy)/(radius*radius*0.25f) > 1.0f) continue;
+                        falloff = 1.0f - sqrt((dx*dx)/(radius*radius*4.0f) + (dy*dy)/(radius*radius*0.25f));
+                        break;
 
-                // Falloff (Soft Brush)
-                float dist = sqrt(dx*dx + dy*dy);
-                float falloff = 1.0f - (dist / radius);
-                falloff = falloff * falloff; // Quad curve
+                    case BrushShape::OVAL_V: // Vertical stretch
+                        if ((dx*dx)/(radius*radius*0.25f) + (dy*dy)/(radius*radius*4.0f) > 1.0f) continue;
+                        falloff = 1.0f - sqrt((dx*dx)/(radius*radius*0.25f) + (dy*dy)/(radius*radius*4.0f));
+                        break;
 
-                // Apply Height
-                int idx = (y * hmap_width + x); // 1 channel
+                    case BrushShape::NOISE_DOTS:
+                        if (dist_sq > radius * radius) continue;
+                        if ((rand() % 100) > 20) continue; // 20% density
+                        falloff = 1.0f - (sqrt(dist_sq) / radius);
+                        break;
+
+                    case BrushShape::NOISE_LINES:
+                        if (dist_sq > radius * radius) continue;
+                        // Simple linear noise pattern based on x
+                        if ( abs((x + y) % 10) > 2 ) continue; 
+                        falloff = 1.0f - (sqrt(dist_sq) / radius);
+                        break;
+                }
+
+                if (falloff <= 0.0f) continue;
+                falloff = falloff * falloff; // Smooth quad curve
+
+                int idx = y * hmap_width + x;
                 float val = (float)heightmap_pixels[idx];
                 float change = brush_strength * falloff;
                 
-                if (raise) val += change;
-                else val -= change;
-
+                val = raise ? (val + change) : (val - change);
                 val = std::clamp(val, 0.0f, 255.0f);
                 
                 if (heightmap_pixels[idx] != (unsigned char)val) {
@@ -2533,165 +3001,219 @@ private:
             }
         }
 
-        if (changed) update_texture();
+        if (changed) {
+            update_texture(heightmap_tex_id, heightmap_pixels.data(), false);
+            // If viewing color, auto-update it roughly (or demand button press for perf)
+            if (show_colour_preview) generate_colour_map_preview();
+        }
+    }
+
+    // =========================================================
+    // COLOR MAP GENERATION (CPU)
+    // =========================================================
+
+    // Loads gradient textures into vectors for fast CPU lookup
+    void load_gradients_to_ram() {
+        auto load_to_vec = [](const char* path, std::vector<glm::vec3>& vec) {
+            int w, h, ch;
+            unsigned char* data = stbi_load(path, &w, &h, &ch, 3);
+            if(data) {
+                vec.resize(w);
+                for(int i=0; i<w; i++) {
+                    vec[i] = glm::vec3(data[i*3]/255.f, data[i*3+1]/255.f, data[i*3+2]/255.f);
+                }
+                stbi_image_free(data);
+            }
+        };
+        load_to_vec(GRADIENT_ELEVATION_PATH, grad_elev);
+        load_to_vec(GRADIENT_STEEPNESS_PATH, grad_steep);
+        load_to_vec(GRADIENT_WATER_PATH, grad_water);
+    }
+
+    glm::vec3 sample_gradient(const std::vector<glm::vec3>& grad, float t) {
+        if(grad.empty()) return glm::vec3(1,0,1); // Error pink
+        t = std::clamp(t, 0.0f, 1.0f);
+        int idx = (int)(t * (grad.size() - 1));
+        return grad[idx];
+    }
+
+    void generate_colour_map_preview() {
+        if (colourmap_pixels.size() != hmap_width * hmap_height * 3)
+            colourmap_pixels.resize(hmap_width * hmap_height * 3);
+
+        if (colourmap_tex_id == 0) glGenTextures(1, &colourmap_tex_id);
+
+        for(int y=0; y<hmap_height; y++) {
+            for(int x=0; x<hmap_width; x++) {
+                int idx_h = y * hmap_width + x;
+                int idx_c = idx_h * 3;
+
+                // 1. Raw Height (0-1)
+                float h_val = heightmap_pixels[idx_h] / 255.0f;
+                
+                // 2. Real Elevation
+                float elevation = edit_data.minimum_height_reach + h_val * (edit_data.maximum_height_reach - edit_data.minimum_height_reach);
+
+                // 3. Steepness (Simple derivative)
+                float h_right = (x < hmap_width-1) ? heightmap_pixels[idx_h+1]/255.f : h_val;
+                float h_down  = (y < hmap_height-1) ? heightmap_pixels[idx_h+hmap_width]/255.f : h_val;
+                float dx = abs(h_val - h_right);
+                float dy = abs(h_val - h_down);
+                float steepness = sqrt(dx*dx + dy*dy) * STEEPNESS_SCALE * 10.0f; 
+
+                glm::vec3 final_col;
+
+                if (elevation < edit_data.water_level_height) {
+                    // Water
+                    float depth = (edit_data.water_level_height - elevation) / 500.0f; 
+                    final_col = sample_gradient(grad_water, depth);
+                } else {
+                    // Land
+                    float t_elev = elevation / ELEVATION_GRADIENT_MAX_HEIGHT;
+                    glm::vec3 c_elev = sample_gradient(grad_elev, t_elev);
+                    glm::vec3 c_steep = sample_gradient(grad_steep, steepness);
+                    final_col = glm::mix(c_steep, c_elev, ELEVATION_GRADIENT_STRENGTH); // Mix based on strength
+                    
+                    // Snow
+                    if (elevation > edit_data.snow_level_height) {
+                        float snow_f = (elevation - edit_data.snow_level_height) / SNOW_FALLOFF_RANGE;
+                        final_col = glm::mix(final_col, glm::vec3(1.0f), std::clamp(snow_f, 0.0f, 1.0f));
+                    }
+                }
+
+                colourmap_pixels[idx_c + 0] = (unsigned char)(final_col.r * 255);
+                colourmap_pixels[idx_c + 1] = (unsigned char)(final_col.g * 255);
+                colourmap_pixels[idx_c + 2] = (unsigned char)(final_col.b * 255);
+            }
+        }
+        update_texture(colourmap_tex_id, colourmap_pixels.data(), true);
+    }
+
+    // =========================================================
+    // CORE HELPERS
+    // =========================================================
+
+    void create_new_map() {
+        // Reset to default struct
+        edit_data = terrain_transalpine; 
+        strncpy(title_buf, "New Map", 128);
+        
+        // Reset buffers
+        hmap_width = 1024;
+        hmap_height = 1024;
+        heightmap_pixels.assign(hmap_width * hmap_height, 20); // Dark grey flat terrain
+        
+        // Clear tags
+        for(int k=0; k<MAX_TAG_AMOUNT; k++) {
+            edit_data.tags[k].type = TerrainTagType::DISABLED;
+            tag_names[k][0] = '\0';
+        }
+        
+        sync_buffers_from_struct();
+        if (heightmap_tex_id == 0) glGenTextures(1, &heightmap_tex_id);
+        update_texture(heightmap_tex_id, heightmap_pixels.data(), false);
+        
+        status_msg = "New Map Created!";
+        status_timer = 2.0f;
     }
 
     void load_heightmap_to_memory(const std::string& path) {
         int w, h, ch;
-        // Use stbi directly to get raw bytes
-        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 1); // Force 1 channel (grayscale)
-        
+        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 1);
         if (data) {
-            hmap_width = w;
-            hmap_height = h;
+            hmap_width = w; hmap_height = h;
             heightmap_pixels.assign(data, data + (w * h));
             stbi_image_free(data);
         } else {
-            // Create fallback blank texture if file missing
-            hmap_width = 1024;
-            hmap_height = 1024;
-            heightmap_pixels.assign(hmap_width * hmap_height, 0); // Black
-            std::cout << "Warning: Could not load heightmap, creating blank." << std::endl;
+            // Only warn if path was actually provided
+            if (!path.empty()) std::cout << "Warning: Could not load heightmap at: " << path << std::endl;
+            // Ensure we have something
+            if (heightmap_pixels.empty()) {
+                hmap_width = 1024; hmap_height = 1024;
+                heightmap_pixels.assign(1024*1024, 0);
+            }
         }
-
-        // Generate OpenGL Texture
         if (heightmap_tex_id == 0) glGenTextures(1, &heightmap_tex_id);
-        update_texture();
+        update_texture(heightmap_tex_id, heightmap_pixels.data(), false);
     }
 
-    void update_texture() {
-        glBindTexture(GL_TEXTURE_2D, heightmap_tex_id);
-        // Using GL_RED for single channel visualization. 
-        // Note: For ImGui::Image to render it as grayscale (not red), we might want to use swizzle mask 
-        // or just upload as RGB. For simplicity, let's use RGB here by duplicating bytes, 
-        // OR better: use GL_RED and rely on a shader. But ImGui uses default shaders. 
-        // Easiest "lazy" fix for visualization: upload as GL_RGB.
-        
-        // Temp RGB buffer for visualization
-        std::vector<unsigned char> vis_buffer(hmap_width * hmap_height * 3);
-        for(size_t i=0; i < heightmap_pixels.size(); i++) {
-            vis_buffer[i*3+0] = heightmap_pixels[i];
-            vis_buffer[i*3+1] = heightmap_pixels[i];
-            vis_buffer[i*3+2] = heightmap_pixels[i];
+    void update_texture(GLuint id, unsigned char* data, bool rgb) {
+        glBindTexture(GL_TEXTURE_2D, id);
+        GLenum format = rgb ? GL_RGB : GL_RED;
+        GLenum internal = rgb ? GL_RGB : GL_RED;
+        // Swizzle for grayscale to appear red/white in preview if needed, or just use GL_RED and let ImGui render red channel
+        if (!rgb) { 
+            GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
+            glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
         }
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, hmap_width, hmap_height, 0, GL_RGB, GL_UNSIGNED_BYTE, vis_buffer.data());
-        
+        glTexImage2D(GL_TEXTURE_2D, 0, internal, hmap_width, hmap_height, 0, format, GL_UNSIGNED_BYTE, data);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
-    // =========================================================
-    // IO OPERATIONS
-    // =========================================================
+    void sync_buffers_from_struct() {
+        if(edit_data.title) strncpy(title_buf, edit_data.title, 128);
+        for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+            if(edit_data.tags[i].name) strncpy(tag_names[i], edit_data.tags[i].name, 64);
+            else tag_names[i][0]='\0';
+        }
+    }
 
     void refresh_level_list() {
         available_levels.clear();
         if (fs::exists(LEVELS_PATH)) {
             for (const auto& entry : fs::directory_iterator(LEVELS_PATH)) {
-                if (entry.path().extension() == ".json") {
+                if (entry.path().extension() == ".json")
                     available_levels.push_back(entry.path().filename().string());
-                }
             }
         }
     }
 
-    void sync_buffers_from_struct() {
-        if (edit_data.title) strncpy(title_buf, edit_data.title, sizeof(title_buf));
-        
-        for(int i=0; i<MAX_TAG_AMOUNT; i++) {
-             if (edit_data.tags[i].name)
-                 strncpy(tag_names[i], edit_data.tags[i].name, sizeof(tag_names[i]));
-             else 
-                 tag_names[i][0] = '\0';
-        }
-    }
-
     void save_level() {
-        // 1. Prepare Paths based on Title
-        std::string clean_title = title_buf;
-        if (clean_title.empty()) clean_title = "untitled_level";
-        std::replace(clean_title.begin(), clean_title.end(), ' ', '_');
-
-        std::string json_filename = clean_title + ".json";
-        std::string hmap_filename = clean_title + "_heightmap.png";
+        std::string clean = title_buf;
+        if(clean.empty()) clean = "untitled";
+        std::replace(clean.begin(), clean.end(), ' ', '_');
         
-        std::string full_json_path = LEVELS_PATH + json_filename;
-        std::string full_hmap_path = HEIGHTMAPS_PATH + hmap_filename;
+        std::string json_p = LEVELS_PATH + clean + ".json";
+        std::string png_p = HEIGHTMAPS_PATH + clean + "_heightmap.png";
 
-        // 2. Save PNG
-        // We write the raw grayscale data. Stride is width * 1 byte.
-        int success = stbi_write_png(full_hmap_path.c_str(), hmap_width, hmap_height, 1, heightmap_pixels.data(), hmap_width);
-        
-        if (!success) {
-            status_msg = "Error Saving Heightmap!";
-            status_is_error = true;
-            status_timer = 3.0f;
-            return;
+        if(stbi_write_png(png_p.c_str(), hmap_width, hmap_height, 1, heightmap_pixels.data(), hmap_width)) {
+            json j;
+            j["title"] = std::string(title_buf);
+            j["heightmap_path"] = png_p;
+            j["resolution_x"] = edit_data.resolution_x;
+            j["resolution_y"] = edit_data.resolution_y;
+            j["min_height"] = edit_data.minimum_height_reach;
+            j["max_height"] = edit_data.maximum_height_reach;
+            j["vertical_scale"] = edit_data.vertical_scale;
+            j["water_level"] = edit_data.water_level_height;
+            j["snow_level"] = edit_data.snow_level_height;
+            
+            j["tags"] = json::array();
+            for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+                if(edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
+                j["tags"].push_back({
+                    {"name", std::string(tag_names[i])},
+                    {"uv_x", edit_data.tags[i].uv_x},
+                    {"uv_y", edit_data.tags[i].uv_y},
+                    {"type", (int)edit_data.tags[i].type}
+                });
+            }
+            std::ofstream o(json_p); o << std::setw(4) << j;
+            status_msg = "Saved!"; status_is_error = false; status_timer = 2.0f;
+            refresh_level_list();
+        } else {
+            status_msg = "Save Error!"; status_is_error = true; status_timer = 3.0f;
         }
-
-        // 3. Update Struct Paths (Important: The game will load from these paths)
-        // Note: In a real engine, we'd handle strings better than const char* assignment.
-        // For now, we assume these paths are re-constructed on load or used transiently.
-        // We WON'T update the edit_data pointers here directly to point to local stack strings, 
-        // but we will write the correct paths to the JSON.
-
-        // 4. Save JSON
-        json j;
-        j["title"] = std::string(title_buf);
-        j["heightmap_path"] = full_hmap_path;
-        j["areas_data_path"] = std::string(edit_data.areas_data_path ? edit_data.areas_data_path : ""); // We don't edit this yet
-        j["resolution_x"] = edit_data.resolution_x;
-        j["resolution_y"] = edit_data.resolution_y;
-        j["min_height"] = edit_data.minimum_height_reach;
-        j["max_height"] = edit_data.maximum_height_reach;
-        j["vertical_scale"] = edit_data.vertical_scale;
-        j["water_level"] = edit_data.water_level_height;
-        j["snow_level"] = edit_data.snow_level_height;
-
-        j["tags"] = json::array();
-        for(int i=0; i<MAX_TAG_AMOUNT; i++) {
-            if (edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
-            j["tags"].push_back({
-                {"name", std::string(tag_names[i])},
-                {"uv_x", edit_data.tags[i].uv_x},
-                {"uv_y", edit_data.tags[i].uv_y},
-                {"type", (int)edit_data.tags[i].type}
-            });
-        }
-
-        std::ofstream o(full_json_path);
-        o << std::setw(4) << j << std::endl;
-        o.close();
-
-        // 5. Feedback
-        status_msg = "Level Saved Successfully!";
-        status_is_error = false;
-        status_timer = 2.0f;
-        
-        refresh_level_list();
     }
 
-    void load_level(const std::string& filename) {
-        std::string full_path = LEVELS_PATH + filename;
-        std::ifstream i(full_path);
-        if (!i.good()) {
-            status_msg = "Failed to load JSON!";
-            status_is_error = true;
-            status_timer = 3.0f;
-            return;
-        }
-
-        json j;
-        i >> j;
-
-        // JSON -> Buffers
-        std::string s_title = j.value("title", "Untitled");
-        strncpy(title_buf, s_title.c_str(), sizeof(title_buf));
-
-        // JSON -> Struct
+    void load_level(const std::string& f) {
+        std::ifstream i(LEVELS_PATH + f);
+        if(!i.good()) return;
+        json j; i >> j;
+        
+        std::string t = j.value("title", "Untitled");
+        strncpy(title_buf, t.c_str(), 128);
         edit_data.resolution_x = j.value("resolution_x", 1024);
         edit_data.resolution_y = j.value("resolution_y", 1024);
         edit_data.minimum_height_reach = j.value("min_height", 0.f);
@@ -2700,32 +3222,23 @@ private:
         edit_data.water_level_height = j.value("water_level", 0.f);
         edit_data.snow_level_height = j.value("snow_level", 3000.f);
         
-        // Note: We need to store the path strings somewhere persistent if we want to use them
-        // For this editor logic, loading the heightmap pixels immediately is what matters.
-        std::string hmap_path = j.value("heightmap_path", "");
-        load_heightmap_to_memory(hmap_path);
-
-        // Tags
-        for(int k=0; k<MAX_TAG_AMOUNT; k++) {
-            edit_data.tags[k].type = TerrainTagType::DISABLED;
-            tag_names[k][0] = '\0';
-        }
-        if (j.contains("tags")) {
+        std::string path = j.value("heightmap_path", "");
+        load_heightmap_to_memory(path);
+        
+        for(int k=0; k<MAX_TAG_AMOUNT; k++) { edit_data.tags[k].type = TerrainTagType::DISABLED; tag_names[k][0]='\0'; }
+        if(j.contains("tags")) {
             int idx = 0;
-            for (auto& element : j["tags"]) {
-                if (idx >= MAX_TAG_AMOUNT) break;
-                std::string t_name = element["name"];
-                strncpy(tag_names[idx], t_name.c_str(), sizeof(tag_names[idx]));
-                edit_data.tags[idx].uv_x = element["uv_x"];
-                edit_data.tags[idx].uv_y = element["uv_y"];
-                edit_data.tags[idx].type = (TerrainTagType)element["type"];
+            for(auto& el : j["tags"]) {
+                if(idx>=MAX_TAG_AMOUNT) break;
+                std::string n = el["name"];
+                strncpy(tag_names[idx], n.c_str(), 64);
+                edit_data.tags[idx].uv_x = el["uv_x"];
+                edit_data.tags[idx].uv_y = el["uv_y"];
+                edit_data.tags[idx].type = (TerrainTagType)el["type"];
                 idx++;
             }
         }
-        
-        status_msg = "Level Loaded!";
-        status_is_error = false;
-        status_timer = 2.0f;
+        status_msg = "Loaded!"; status_is_error = false; status_timer = 2.0f;
     }
 };
 
@@ -2776,6 +3289,7 @@ public:
     bool active() { return is_active; }
     void end_scene(int next_scene_id) { is_active = false; this->next_scene_id = next_scene_id; }
     int get_next_scene_id() { return next_scene_id; }
+    void set_active() { is_active = true; }
 
     virtual Shader* get_world_pos_buffer_shader() { return NULL; }
     
@@ -3148,6 +3662,7 @@ private:
 #include "Scene.h"
 #include "UIList.h"
 #include "TextButton.h"
+#include "LevelManager.h"
 #include "BezierLine2D.h"
 
 class TitleCardScene : public Scene
@@ -3174,8 +3689,10 @@ private:
     float end_scene_timer = 0.5;
     int next_scene_id = 0;
 
+    LevelManager *lvl_manager;
+
 public:
-    TitleCardScene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih) {
+    TitleCardScene (LevelManager *lvl_manager, World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih), lvl_manager(lvl_manager) {
     }
     
     void init() override {
@@ -3209,8 +3726,9 @@ public:
         /* Level select right panel */
         level_select_panel = new UIList(20, Colour::DARK_GREY, 20);
         level_select_panel->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(-250, 0));
-        for (int i=0; i<level_number; i++) {
-            std::string level_name = "level " + std::to_string(i+1);
+        auto levels = lvl_manager->get_level_data();
+        for (int i=0; i<levels.size(); i++) {
+            std::string level_name = levels[i].title;
             TextButton* lvl_btn = new TextButton(level_name.c_str(), 0.75f, Colour::WHITE, ButtonID::LEVEL_START+i,false);
             level_select_panel->add_item( lvl_btn );
         }
@@ -3223,7 +3741,7 @@ public:
     void loop(float dt) override {
         /* end scene logic */
         if (end_scene_flag) end_scene_timer -= dt;
-        if (end_scene_timer <= 0.f) end_scene(next_scene_id);
+        if (end_scene_timer <= 0.f) { end_scene_flag = false; end_scene_timer = 0.5f; end_scene(next_scene_id); }
     }
 
     void on_ui_button_clicked(int button_id, bool state) {
@@ -5035,157 +5553,6 @@ public:
 #endif
 
 ======================================================================
-*** FILE: terrain\TerrainData.h ***
-======================================================================
-
-#ifndef TERRAINDATA_H
-#define TERRAINDATA_H
-
-#include <unordered_map>
-#include "glm/glm.hpp"
-#include "ColourData.h"
-
-
-#define MAX_TAG_AMOUNT 16
-#define SNOW_FALLOFF_RANGE 700.f // Distance above snow level where snow covers everything
-#define SNOW_MAX_STEEPNESS 0.15f  // How flat ground must be for snow at the lowest level
-
-
-enum TerrainTagType {
-    NAME_TAG, LEVEL_START, LEVEL_END, DISABLED
-};
-struct TerrainTag {
-    float uv_x;
-    float uv_y;
-    const char* name = "unassigned";
-    TerrainTagType type = TerrainTagType::DISABLED;
-};
-
-struct TerrainData
-{
-    const char* title;
-    const char* heightmap_path;
-    const char* areas_data_path;
-
-    int resolution_x;
-    int resolution_y;
-
-    float minimum_height_reach;
-    float maximum_height_reach;
-    float vertical_scale;
-
-    float water_level_height = 0.f;
-    float snow_level_height = 3000.f;
-
-    TerrainTag tags[MAX_TAG_AMOUNT];
-};
-
-const TerrainData terrain_transalpine = {
-    /* title: */ "Transalpine pass, Romania",
-    /* heightmap_path: */ "C:/Media/Projects/OpenGL/Layer_Trains/textures/terrain/transalpine_heightmap.png",
-    /* areas_data_path: */ "C:/Media/Projects/OpenGL/Layer_Trains/textures/terrain/transalpine_area_data.png",
-    /* resolution_x: */ 1024,
-    /* resolution_y: */ 1024,
-    /* minimum_height_reach: */ 1000.f,
-    /* maximum_height_reach: */ 2500.f,
-    /* vertical_scale: */ 295.07f / 1024.f,
-    /* water_level_height: */ 0.f,
-    /* snow_level_height: */ 1500.f,
-
-    {
-        { 0.7f, 0.01f, "Level Start", TerrainTagType::LEVEL_START },
-        { 0.01f, 0.8f, "Level End", TerrainTagType::LEVEL_END},
-        { 0.3f, 0.22f, "City One", TerrainTagType::NAME_TAG},
-        { 0.475f, 0.85f, "Dipla the city", TerrainTagType::NAME_TAG},
-        { 0.9f, 0.65f, "pretty mountain nature reserve", TerrainTagType::NAME_TAG},
-    }
-};
-
-enum BlueRegions {
-    BLUE_RESERVED12 = 255, 
-    NATURE_RESERVE = 239,
-    CITY = 223,
-    BLUE_RESERVED0 = 207,
-    BLUE_RESERVED1 = 191,
-    BLUE_RESERVED2 = 175,
-    BLUE_RESERVED3 = 159,
-    BLUE_RESERVED4 = 127,
-    BLUE_RESERVED5 = 111,
-    BLUE_RESERVED6 = 95,
-    BLUE_RESERVED7 = 79,
-    BLUE_RESERVED8 = 63,
-    BLUE_RESERVED9 = 47,
-    BLUE_RESERVED10 = 31,
-    BLUE_RESERVED11 = 15,
-    BLUE_NONE = 0
-};
-enum GreenRegions {
-    GREEN_RESERVED0 = 255, 
-    FORREST = 239,
-    SAND = 223,
-    WATER = 207,
-    GREEN_RESERVED1 = 191,
-    GREEN_RESERVED2 = 175,
-    GREEN_RESERVED3 = 159,
-    GREEN_RESERVED4 = 127,
-    GREEN_RESERVED5 = 111,
-    GREEN_RESERVED6 = 95,
-    GREEN_RESERVED7 = 79,
-    GREEN_RESERVED8 = 63,
-    GREEN_RESERVED9 = 47,
-    GREEN_RESERVED10 = 31,
-    GREEN_RESERVED11 = 15,
-    GREEN_NONE = 0,
-};
-
-const std::unordered_map<int, glm::vec4> BLUE_REGION_COLOURS = {
-    { BlueRegions::BLUE_RESERVED12, Colour::TRANSPARENT }, // Interactable (Invisible on map, logic handled separately)
-    { BlueRegions::NATURE_RESERVE, Colour::GREEN }, // Nature Reserve (Dark Green tint)
-    { BlueRegions::CITY, Colour::YELLOW }, // City Area (Grey-Blue tint)
-    { BlueRegions::BLUE_RESERVED0,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED1,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED2,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED3,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED4,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED5,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED6,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED7,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED8,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED9,   Colour::TRANSPARENT } , // Default (No tint)
-    { BlueRegions::BLUE_RESERVED10,   Colour::TRANSPARENT },  // Default (No tint)
-    { BlueRegions::BLUE_RESERVED11,   Colour::TRANSPARENT },  // Default (No tint)
-    { BlueRegions::BLUE_NONE,   Colour::TRANSPARENT }  // Default (No tint)
-};
-const std::unordered_map<int, glm::vec4> GREEN_REGION_COLOURS = {
-    { GreenRegions::GREEN_RESERVED0, Colour::TRANSPARENT }, // Forest
-    { GreenRegions::FORREST, glm::vec4(0.76f, 0.70f, 0.50f, 1.0f) }, // Sand
-    { GreenRegions::SAND, glm::vec4(0.00f, 0.30f, 0.70f, 1.0f) }, // Water
-    { GreenRegions::WATER,   Colour::SKY_BLUE },  // Default grass/ground
-    { GreenRegions::GREEN_RESERVED1,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED2,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED3,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED4,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED5,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED6,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED7,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED8,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED9,   Colour::TRANSPARENT } , // Default (No tint)
-    { GreenRegions::GREEN_RESERVED10,   Colour::TRANSPARENT },  // Default (No tint)
-    { GreenRegions::GREEN_RESERVED11,   Colour::TRANSPARENT },  // Default (No tint)
-    { GreenRegions::GREEN_NONE,   Colour::TRANSPARENT }  // Default grass/ground
-};
-
-
-// 3. BORDER SETTINGS
-
-#define BLUE_REGION_OPACITY 0.15f
-#define GREEN_REGION_OPACITY 0.15f
-
-const glm::vec4 BORDER_COLOUR = glm::vec4(0.f,0.f,0.f,BLUE_REGION_OPACITY*3.f);
-
-#endif
-
-======================================================================
 *** FILE: terrain\TerrainPainter.h ***
 ======================================================================
 
@@ -5198,19 +5565,22 @@ const glm::vec4 BORDER_COLOUR = glm::vec4(0.f,0.f,0.f,BLUE_REGION_OPACITY*3.f);
 #include <vector>
 #include <regex>
 #include "world_objects/Object.h"
-#include "world_objects/Plane.h"
-#include "rendering/Camera.h"
 #include "settings/Settings.h"
-#include "ElevationLineDrawer.h"
 #include "TerrainData.h"
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
+// Ensure STB implementation is only defined once in the project (usually in main or a utility cpp)
+// If you get linker errors, remove this define here.
+#ifndef STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#endif
+
+#ifndef STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#endif
 
 #define ERROR_EMPTY_TEXTURE_RETURN Texture(1, 1, new unsigned char[3]{0,0,0})
-
 #define TERRAIN_BOUNDARY_PIXEL_NUM 2
 
 using namespace glm;
@@ -5219,11 +5589,7 @@ using namespace std;
 class TerrainPainter
 {
 public:
-    //bool data_loaded = false;
-    //vector<float> height_data_raw;
     vector<vec2> terrain_areas_data;
-    vector<vec2> interactable_positions;
-    vector<vec2> name_tag_positions;
     const TerrainData *terrain_data;
 
     TerrainPainter (const TerrainData *terrain_data) {
@@ -5231,230 +5597,373 @@ public:
     }
 
     Texture bake_terrain_texture(bool release_data = true) {
-        #if OVERWRITE_CACHED_TEXTURES
-            bool debug_overwrite = true;
-        #else
-            bool debug_overwrite = false;
-        #endif
-
-        // chceck if a generated texture already present - if so and no flag, use it
-        std::string cleaned_name = clean_map_name(terrain_data->title);
+        
+        // Output path logic
+        std::string cleaned_name = terrain_data->title;
+        std::replace(cleaned_name.begin(), cleaned_name.end(), ' ', '_');
         std::string cache_path = std::string(TEXTURE_GENERATED_CACHE_FOLDER_PATH) + "/" + cleaned_name + "_colour_texture.png";
 
-        if (!debug_overwrite && std::ifstream(cache_path).good()) {
+        #if !OVERWRITE_CACHED_TEXTURES
+        if (std::ifstream(cache_path).good()) {
             return Texture(cache_path.c_str(), false);
         }
+        #endif
 
-        // load terrain data
+        // Load Area Data (Biome Map)
         int width, height, nrChannels;
         unsigned char* map_data = stbi_load(terrain_data->areas_data_path, &width, &height, &nrChannels, 3);
         if (!map_data) return ERROR_EMPTY_TEXTURE_RETURN;
 
+        // Load Gradients
+        int gw;
+        std::vector<vec3> g_elev = load_gradient(GRADIENT_ELEVATION_PATH, gw);
+        std::vector<vec3> g_steep = load_gradient(GRADIENT_STEEPNESS_PATH, gw);
+        std::vector<vec3> g_water = load_gradient(GRADIENT_WATER_PATH, gw);
 
-        // load painting gradients
-        int grad_w;
-        std::vector<vec3> grad_elev = load_gradient_data(GRADIENT_ELEVATION_PATH, grad_w);
-        std::vector<vec3> grad_steep = load_gradient_data(GRADIENT_STEEPNESS_PATH, grad_w);
-        std::vector<vec3> grad_water = load_gradient_data(GRADIENT_WATER_PATH, grad_w);
-
-        // init output colour buffer and arrays
         std::vector<unsigned char> color_buffer(width * height * 3);
-        interactable_positions.clear();
-        name_tag_positions.clear();
 
-        // helper function to query data at pixel
-        auto get_pixel = [&](int x, int y) -> glm::ivec3 {
-            int cx = glm::clamp(x, 0, width - 1);
-            int cy = glm::clamp(y, 0, height - 1);
-            int idx = (cy * width + cx) * 3;
-            return glm::ivec3(map_data[idx], map_data[idx+1], map_data[idx+2]);
+        auto get_pixel_r = [&](int x, int y) {
+            int cx = glm::clamp(x, 0, width-1);
+            int cy = glm::clamp(y, 0, height-1);
+            return map_data[(cy * width + cx) * 3];
         };
 
-        // Get Normalized Height (0.0 - 1.0) from Red Channel
-        auto get_h_norm = [&](int x, int y) -> float {
-            return (float)get_pixel(x, y).r / 255.0f;
-        };
-
-        // calculate colour for every pixel of output terrain
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int idx = (y * width + x) * 3;
 
-                /* ================================================ */
-                /* COLOUR TERRAIN BOUNDARY  */
-
-                if (y < TERRAIN_BOUNDARY_PIXEL_NUM || x < TERRAIN_BOUNDARY_PIXEL_NUM || x >= width-TERRAIN_BOUNDARY_PIXEL_NUM || y >= height-TERRAIN_BOUNDARY_PIXEL_NUM) {
-                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE.r * 255.f);
-                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE.g * 255.f);
-                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE.b * 255.f);
+                // Border
+                if (y < 2 || x < 2 || x >= width-2 || y >= height-2) {
+                    color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE.r * 255);
+                    color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE.g * 255);
+                    color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE.b * 255);
                     continue;
                 }
 
-                /* ================================================ */
-                /* ELEVATION AND STEEPNESS COLOURING  */
+                // Calculation
+                float h_raw = get_pixel_r(x,y) / 255.0f;
+                float elev = terrain_data->minimum_height_reach + h_raw * (terrain_data->maximum_height_reach - terrain_data->minimum_height_reach);
+                
+                // Steepness
+                float h_r = get_pixel_r(x+1, y)/255.f;
+                float h_d = get_pixel_r(x, y+1)/255.f;
+                float steepness = glm::length(vec2(h_raw - h_r, h_raw - h_d)) * STEEPNESS_SCALE * 5.0f;
 
-                // get height at pixel
-                float get_height_at_pixel = get_pixel(x,y).r;
-                float norm_h = get_height_at_pixel / 255.f;
-                float pixel_elevation = terrain_data->minimum_height_reach + norm_h * (terrain_data->maximum_height_reach - terrain_data->minimum_height_reach);
-                vec3 final_colour;
+                vec3 final_col;
 
-                // get steepness at pixel
-                const int S = STEEPNESS_SMOOTHING_STEP_SIZE;
-                float dx = (get_h_norm(x+S,y) - get_h_norm(x-S,y)) / (2.f*S);
-                float dy = (get_h_norm(x,y+S) - get_h_norm(x,y-S)) / (2.f*S);
-                float steepness = glm::length(vec2(dx, dy));
+                if (elev < terrain_data->water_level_height) {
+                    float d = (terrain_data->water_level_height - elev) / terrain_data->water_level_height;
+                    final_col = sample_grad(g_water, d);
+                } else {
+                    vec3 c_e = sample_grad(g_elev, elev / ELEVATION_GRADIENT_MAX_HEIGHT);
+                    vec3 c_s = sample_grad(g_steep, steepness);
+                    final_col = mix(c_s, c_e, ELEVATION_GRADIENT_STRENGTH);
 
-                // find elevation region
-                bool is_under_water_level = pixel_elevation <= terrain_data->water_level_height;
-                bool is_dry_land = !is_under_water_level;
-                bool is_above_snow_level = pixel_elevation >= terrain_data->snow_level_height;
-
-                // apply water gradient
-                if (is_under_water_level) {
-                    float depth = glm::clamp((terrain_data->water_level_height- pixel_elevation) / terrain_data->water_level_height, 0.f, 1.f);
-                    final_colour = sample_gradient(grad_water, depth * depth);
-                }
-
-                // apply dry land - elevation and steepness gradients
-                if (is_dry_land) {
-                    float t_elev = glm::clamp(pixel_elevation / ELEVATION_GRADIENT_MAX_HEIGHT, 0.f, 1.f);
-                    float t_steep = glm::clamp(steepness * STEEPNESS_SCALE, 0.f, 1.f);
-                    final_colour = glm::mix(sample_gradient(grad_steep, t_steep), sample_gradient(grad_elev, t_elev), ELEVATION_GRADIENT_STRENGTH);
-                }
-
-                // apply extra snow layer
-                if (is_above_snow_level) {
-
-                    float height_above = pixel_elevation - terrain_data->snow_level_height;
-                    float above_snow_level_mult = height_above / SNOW_FALLOFF_RANGE;
-                    float falloff_ratio = glm::clamp(above_snow_level_mult*above_snow_level_mult, 0.0f, 1.0f);
-                    float allowed_steepness = glm::mix(SNOW_MAX_STEEPNESS, 1.0f, falloff_ratio);
-                    
-                    if (steepness * STEEPNESS_SCALE < allowed_steepness) {
-                        float snow_transition = glm::clamp(height_above / 50.0f, 0.0f, 1.0f); // Smooth transition at the very bottom edge of snow line
-                        float snow_opacity = snow_transition; //glm::clamp(snow_transition, 0.f, 1.f);
-                        final_colour = glm::mix(final_colour, vec3(Colour::SNOW), snow_opacity*Colour::SNOW.a);
+                    if (elev > terrain_data->snow_level_height) {
+                        float s = (elev - terrain_data->snow_level_height) / SNOW_FALLOFF_RANGE;
+                        final_col = mix(final_col, vec3(1.0f), glm::clamp(s, 0.f, 1.f));
                     }
                 }
-                
-                /* ================================================ */
-                /* REGION SPECIFIC COLOURING  */
-                
-                // blue region check
-                if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
-                else {
-                    float pixel_blue_channel = get_pixel(x,y).b;
-                    BlueRegions blue_region = ((int)(pixel_blue_channel+1) % 16) == 0 ? (BlueRegions)(int)(pixel_blue_channel) : BlueRegions::BLUE_NONE;
-                    if (blue_region != BlueRegions::BLUE_NONE) {
-                        vec4 blue_region_colour = get_color_from_map(BLUE_REGION_COLOURS, blue_region);
-                        final_colour = glm::mix(final_colour, vec3(blue_region_colour), BLUE_REGION_OPACITY);
-                    }
-                    else if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
-                    
-                    // green region check
-                    float pixel_green_channel = get_pixel(x,y).g;
-                    GreenRegions green_region = ((int)(pixel_green_channel+1) % 16) == 0 ? (GreenRegions)(int)(pixel_green_channel) : GreenRegions::GREEN_NONE;
-                    if (green_region != GreenRegions::GREEN_NONE) {
-                        vec4 green_region_colour = get_color_from_map(GREEN_REGION_COLOURS, green_region);
-                        final_colour = glm::mix(final_colour, vec3(green_region_colour), GREEN_REGION_OPACITY);
-                    }
-                }
-                
-                                
-                // apply final colour
-                color_buffer[idx] = (unsigned char)(final_colour.r * 255.f);
-                color_buffer[idx+1] = (unsigned char)(final_colour.g * 255.f);
-                color_buffer[idx+2] = (unsigned char)(final_colour.b * 255.f);
+
+                color_buffer[idx] = (unsigned char)(final_col.r * 255);
+                color_buffer[idx+1] = (unsigned char)(final_col.g * 255);
+                color_buffer[idx+2] = (unsigned char)(final_col.b * 255);
             }
         }
 
-        // release raw data
-        if (release_data) {
-            stbi_image_free(map_data);
-        }
-
-        // teturn generated png as texture
-        stbi_write_png(cache_path.c_str(), width, height, 3, color_buffer.data(), width * 3);
+        if(release_data) stbi_image_free(map_data);
+        
+        stbi_write_png(cache_path.c_str(), width, height, 3, color_buffer.data(), width*3);
         return Texture(width, height, color_buffer.data());
     }
 
-    vector<vec2> get_interactable_positions() {
-        return interactable_positions;
-    }
-    vector<vec2> get_name_tag_positions() {
-        return name_tag_positions;
-    }
-
 private:
-    static std::string clean_map_name(const std::string& name) {
-        std::string cleaned = name;
-        cleaned = std::regex_replace(cleaned, std::regex(", "), "-");
-        std::replace(cleaned.begin(), cleaned.end(), ' ', '_');
-        return cleaned;
-    }
-
-    static std::vector<vec3> load_gradient_data(const char* path, int& out_width) {
-        int height, nrChannels;
-        unsigned char *data = stbi_load(path, &out_width, &height, &nrChannels, 3);
-        std::vector<vec3> gradient;
-        if (data && out_width > 0) {
-            for (int i = 0; i < out_width; ++i) {
-                gradient.push_back(vec3(
-                    (float)data[i * 3 + 0] / 255.0f,
-                    (float)data[i * 3 + 1] / 255.0f,
-                    (float)data[i * 3 + 2] / 255.0f
-                ));
-            }
+    std::vector<vec3> load_gradient(const char* path, int& w) {
+        int h, c;
+        unsigned char* d = stbi_load(path, &w, &h, &c, 3);
+        std::vector<vec3> res;
+        if(d) {
+            for(int i=0; i<w; i++) res.push_back(vec3(d[i*3]/255.f, d[i*3+1]/255.f, d[i*3+2]/255.f));
+            stbi_image_free(d);
         }
-        stbi_image_free(data);
-        return gradient;
+        return res;
     }
 
-    static vec3 sample_gradient(const std::vector<vec3>& gradient, float t) {
-        if (gradient.empty()) return vec3(0.f);
-        t = glm::clamp(t, 0.0f, 1.0f);
-        int index = (int)(t * (gradient.size() - 1));
-        return gradient[index];
-    }
-     
-    // Checks 4 neighbors. If Blue (Region) or Green (Biome) differs, it's a border.
-    bool is_border_pixel(int x, int y, int w, int h, unsigned char* data) {
-        if (x <= 0 || x >= w-1 || y <= 0 || y >= h-1) return false;
-
-        int idx = (y * w + x) * 3;
-        unsigned char my_g = data[idx+1];
-        unsigned char my_b = data[idx+2];
-
-        // Check neighbors (Up, Down, Left, Right)
-        int offsets[4][2] = { {1,0}, {-1,0}, {0,1}, {0,-1} };
-
-        for (auto& off : offsets) {
-            int n_idx = ((y + off[1]) * w + (x + off[0])) * 3;
-            // Compare Biome (Green) and Region (Blue)
-            // Note: We ignore Height (Red) for borders
-            if (data[n_idx+1] != my_g || data[n_idx+2] != my_b) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Helper to fetch color from map with default fallback
-    vec4 get_color_from_map(const std::unordered_map<int, vec4>& map, int key) {
-        auto it = map.find(key);
-        if (it != map.end()) {
-            return it->second;
-        }
-        // Check for "0" default key
-        it = map.find(0);
-        if (it != map.end()) return it->second;
-        
-        return Colour::MAGENTA; // Debug color for missing definitions
+    vec3 sample_grad(const std::vector<vec3>& g, float t) {
+        if(g.empty()) return vec3(1,0,1);
+        t = glm::clamp(t, 0.f, 1.f);
+        return g[(int)(t * (g.size()-1))];
     }
 };
 
 #endif
+
+// #ifndef TERRAINPAINTER_H
+// #define TERRAINPAINTER_H
+
+// #include <glad/glad.h>
+// #include <GLFW/glfw3.h>
+// #include <string>
+// #include <vector>
+// #include <regex>
+// #include "world_objects/Object.h"
+// #include "world_objects/Plane.h"
+// #include "rendering/Camera.h"
+// #include "settings/Settings.h"
+// #include "ElevationLineDrawer.h"
+// #include "TerrainData.h"
+// #include <glm/glm.hpp>
+// #include <glm/gtc/matrix_transform.hpp>
+
+// #define STB_IMAGE_WRITE_IMPLEMENTATION
+// #include "stb_image_write.h"
+
+// #define ERROR_EMPTY_TEXTURE_RETURN Texture(1, 1, new unsigned char[3]{0,0,0})
+
+// #define TERRAIN_BOUNDARY_PIXEL_NUM 2
+
+// using namespace glm;
+// using namespace std;
+
+// class TerrainPainter
+// {
+// public:
+//     //bool data_loaded = false;
+//     //vector<float> height_data_raw;
+//     vector<vec2> terrain_areas_data;
+//     vector<vec2> interactable_positions;
+//     vector<vec2> name_tag_positions;
+//     const TerrainData *terrain_data;
+
+//     TerrainPainter (const TerrainData *terrain_data) {
+//         this->terrain_data = terrain_data;
+//     }
+
+//     Texture bake_terrain_texture(bool release_data = true) {
+//         #if OVERWRITE_CACHED_TEXTURES
+//             bool debug_overwrite = true;
+//         #else
+//             bool debug_overwrite = false;
+//         #endif
+
+//         // chceck if a generated texture already present - if so and no flag, use it
+//         std::string cleaned_name = clean_map_name(terrain_data->title);
+//         std::string cache_path = std::string(TEXTURE_GENERATED_CACHE_FOLDER_PATH) + "/" + cleaned_name + "_colour_texture.png";
+
+//         if (!debug_overwrite && std::ifstream(cache_path).good()) {
+//             return Texture(cache_path.c_str(), false);
+//         }
+
+//         // load terrain data
+//         int width, height, nrChannels;
+//         unsigned char* map_data = stbi_load(terrain_data->areas_data_path, &width, &height, &nrChannels, 3);
+//         if (!map_data) return ERROR_EMPTY_TEXTURE_RETURN;
+
+
+//         // load painting gradients
+//         int grad_w;
+//         std::vector<vec3> grad_elev = load_gradient_data(GRADIENT_ELEVATION_PATH, grad_w);
+//         std::vector<vec3> grad_steep = load_gradient_data(GRADIENT_STEEPNESS_PATH, grad_w);
+//         std::vector<vec3> grad_water = load_gradient_data(GRADIENT_WATER_PATH, grad_w);
+
+//         // init output colour buffer and arrays
+//         std::vector<unsigned char> color_buffer(width * height * 3);
+//         interactable_positions.clear();
+//         name_tag_positions.clear();
+
+//         // helper function to query data at pixel
+//         auto get_pixel = [&](int x, int y) -> glm::ivec3 {
+//             int cx = glm::clamp(x, 0, width - 1);
+//             int cy = glm::clamp(y, 0, height - 1);
+//             int idx = (cy * width + cx) * 3;
+//             return glm::ivec3(map_data[idx], map_data[idx+1], map_data[idx+2]);
+//         };
+
+//         // Get Normalized Height (0.0 - 1.0) from Red Channel
+//         auto get_h_norm = [&](int x, int y) -> float {
+//             return (float)get_pixel(x, y).r / 255.0f;
+//         };
+
+//         // calculate colour for every pixel of output terrain
+//         for (int y = 0; y < height; y++) {
+//             for (int x = 0; x < width; x++) {
+//                 int idx = (y * width + x) * 3;
+
+//                 /* ================================================ */
+//                 /* COLOUR TERRAIN BOUNDARY  */
+
+//                 if (y < TERRAIN_BOUNDARY_PIXEL_NUM || x < TERRAIN_BOUNDARY_PIXEL_NUM || x >= width-TERRAIN_BOUNDARY_PIXEL_NUM || y >= height-TERRAIN_BOUNDARY_PIXEL_NUM) {
+//                     color_buffer[idx] = (unsigned char)(Colour::TERRAIN_SIDE.r * 255.f);
+//                     color_buffer[idx+1] = (unsigned char)(Colour::TERRAIN_SIDE.g * 255.f);
+//                     color_buffer[idx+2] = (unsigned char)(Colour::TERRAIN_SIDE.b * 255.f);
+//                     continue;
+//                 }
+
+//                 /* ================================================ */
+//                 /* ELEVATION AND STEEPNESS COLOURING  */
+
+//                 // get height at pixel
+//                 float get_height_at_pixel = get_pixel(x,y).r;
+//                 float norm_h = get_height_at_pixel / 255.f;
+//                 float pixel_elevation = terrain_data->minimum_height_reach + norm_h * (terrain_data->maximum_height_reach - terrain_data->minimum_height_reach);
+//                 vec3 final_colour;
+
+//                 // get steepness at pixel
+//                 const int S = STEEPNESS_SMOOTHING_STEP_SIZE;
+//                 float dx = (get_h_norm(x+S,y) - get_h_norm(x-S,y)) / (2.f*S);
+//                 float dy = (get_h_norm(x,y+S) - get_h_norm(x,y-S)) / (2.f*S);
+//                 float steepness = glm::length(vec2(dx, dy));
+
+//                 // find elevation region
+//                 bool is_under_water_level = pixel_elevation <= terrain_data->water_level_height;
+//                 bool is_dry_land = !is_under_water_level;
+//                 bool is_above_snow_level = pixel_elevation >= terrain_data->snow_level_height;
+
+//                 // apply water gradient
+//                 if (is_under_water_level) {
+//                     float depth = glm::clamp((terrain_data->water_level_height- pixel_elevation) / terrain_data->water_level_height, 0.f, 1.f);
+//                     final_colour = sample_gradient(grad_water, depth * depth);
+//                 }
+
+//                 // apply dry land - elevation and steepness gradients
+//                 if (is_dry_land) {
+//                     float t_elev = glm::clamp(pixel_elevation / ELEVATION_GRADIENT_MAX_HEIGHT, 0.f, 1.f);
+//                     float t_steep = glm::clamp(steepness * STEEPNESS_SCALE, 0.f, 1.f);
+//                     final_colour = glm::mix(sample_gradient(grad_steep, t_steep), sample_gradient(grad_elev, t_elev), ELEVATION_GRADIENT_STRENGTH);
+//                 }
+
+//                 // apply extra snow layer
+//                 if (is_above_snow_level) {
+
+//                     float height_above = pixel_elevation - terrain_data->snow_level_height;
+//                     float above_snow_level_mult = height_above / SNOW_FALLOFF_RANGE;
+//                     float falloff_ratio = glm::clamp(above_snow_level_mult*above_snow_level_mult, 0.0f, 1.0f);
+//                     float allowed_steepness = glm::mix(SNOW_MAX_STEEPNESS, 1.0f, falloff_ratio);
+                    
+//                     if (steepness * STEEPNESS_SCALE < allowed_steepness) {
+//                         float snow_transition = glm::clamp(height_above / 50.0f, 0.0f, 1.0f); // Smooth transition at the very bottom edge of snow line
+//                         float snow_opacity = snow_transition; //glm::clamp(snow_transition, 0.f, 1.f);
+//                         final_colour = glm::mix(final_colour, vec3(Colour::SNOW), snow_opacity*Colour::SNOW.a);
+//                     }
+//                 }
+                
+//                 /* ================================================ */
+//                 /* REGION SPECIFIC COLOURING  */
+                
+//                 // blue region check
+//                 if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
+//                 else {
+//                     float pixel_blue_channel = get_pixel(x,y).b;
+//                     BlueRegions blue_region = ((int)(pixel_blue_channel+1) % 16) == 0 ? (BlueRegions)(int)(pixel_blue_channel) : BlueRegions::BLUE_NONE;
+//                     if (blue_region != BlueRegions::BLUE_NONE) {
+//                         vec4 blue_region_colour = get_color_from_map(BLUE_REGION_COLOURS, blue_region);
+//                         final_colour = glm::mix(final_colour, vec3(blue_region_colour), BLUE_REGION_OPACITY);
+//                     }
+//                     else if (is_border_pixel(x,y,width,height,map_data)) final_colour = BORDER_COLOUR;
+                    
+//                     // green region check
+//                     float pixel_green_channel = get_pixel(x,y).g;
+//                     GreenRegions green_region = ((int)(pixel_green_channel+1) % 16) == 0 ? (GreenRegions)(int)(pixel_green_channel) : GreenRegions::GREEN_NONE;
+//                     if (green_region != GreenRegions::GREEN_NONE) {
+//                         vec4 green_region_colour = get_color_from_map(GREEN_REGION_COLOURS, green_region);
+//                         final_colour = glm::mix(final_colour, vec3(green_region_colour), GREEN_REGION_OPACITY);
+//                     }
+//                 }
+                
+                                
+//                 // apply final colour
+//                 color_buffer[idx] = (unsigned char)(final_colour.r * 255.f);
+//                 color_buffer[idx+1] = (unsigned char)(final_colour.g * 255.f);
+//                 color_buffer[idx+2] = (unsigned char)(final_colour.b * 255.f);
+//             }
+//         }
+
+//         // release raw data
+//         if (release_data) {
+//             stbi_image_free(map_data);
+//         }
+
+//         // teturn generated png as texture
+//         stbi_write_png(cache_path.c_str(), width, height, 3, color_buffer.data(), width * 3);
+//         return Texture(width, height, color_buffer.data());
+//     }
+
+//     vector<vec2> get_interactable_positions() {
+//         return interactable_positions;
+//     }
+//     vector<vec2> get_name_tag_positions() {
+//         return name_tag_positions;
+//     }
+
+// private:
+//     static std::string clean_map_name(const std::string& name) {
+//         std::string cleaned = name;
+//         cleaned = std::regex_replace(cleaned, std::regex(", "), "-");
+//         std::replace(cleaned.begin(), cleaned.end(), ' ', '_');
+//         return cleaned;
+//     }
+
+//     static std::vector<vec3> load_gradient_data(const char* path, int& out_width) {
+//         int height, nrChannels;
+//         unsigned char *data = stbi_load(path, &out_width, &height, &nrChannels, 3);
+//         std::vector<vec3> gradient;
+//         if (data && out_width > 0) {
+//             for (int i = 0; i < out_width; ++i) {
+//                 gradient.push_back(vec3(
+//                     (float)data[i * 3 + 0] / 255.0f,
+//                     (float)data[i * 3 + 1] / 255.0f,
+//                     (float)data[i * 3 + 2] / 255.0f
+//                 ));
+//             }
+//         }
+//         stbi_image_free(data);
+//         return gradient;
+//     }
+
+//     static vec3 sample_gradient(const std::vector<vec3>& gradient, float t) {
+//         if (gradient.empty()) return vec3(0.f);
+//         t = glm::clamp(t, 0.0f, 1.0f);
+//         int index = (int)(t * (gradient.size() - 1));
+//         return gradient[index];
+//     }
+     
+//     // Checks 4 neighbors. If Blue (Region) or Green (Biome) differs, it's a border.
+//     bool is_border_pixel(int x, int y, int w, int h, unsigned char* data) {
+//         if (x <= 0 || x >= w-1 || y <= 0 || y >= h-1) return false;
+
+//         int idx = (y * w + x) * 3;
+//         unsigned char my_g = data[idx+1];
+//         unsigned char my_b = data[idx+2];
+
+//         // Check neighbors (Up, Down, Left, Right)
+//         int offsets[4][2] = { {1,0}, {-1,0}, {0,1}, {0,-1} };
+
+//         for (auto& off : offsets) {
+//             int n_idx = ((y + off[1]) * w + (x + off[0])) * 3;
+//             // Compare Biome (Green) and Region (Blue)
+//             // Note: We ignore Height (Red) for borders
+//             if (data[n_idx+1] != my_g || data[n_idx+2] != my_b) {
+//                 return true;
+//             }
+//         }
+//         return false;
+//     }
+
+//     // Helper to fetch color from map with default fallback
+//     vec4 get_color_from_map(const std::unordered_map<int, vec4>& map, int key) {
+//         auto it = map.find(key);
+//         if (it != map.end()) {
+//             return it->second;
+//         }
+//         // Check for "0" default key
+//         it = map.find(0);
+//         if (it != map.end()) return it->second;
+        
+//         return Colour::MAGENTA; // Debug color for missing definitions
+//     }
+// };
+
+// #endif
 
 ======================================================================
 *** FILE: terrain\TerrainPlane.h ***

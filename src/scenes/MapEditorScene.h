@@ -10,24 +10,45 @@
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <random>
+
+// Project Dependencies
 #include "Scene.h"
 #include "TerrainData.h"
 #include "Texture.h" 
+#include "textures/TextureData.h" // For gradient paths
+
+// External Libs
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "json.hpp"
 
-// Image writing for heightmap saving
+// Image writing
 #ifndef STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #endif
 
-// Image loading for initial heightmap load
-//#include "stb_image.h" 
+// Image loading
+#ifndef STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h" 
+#endif
 
 namespace fs = std::filesystem;
+
+enum class BrushShape {
+    CIRCLE,
+    OVAL_H,
+    OVAL_V,
+    NOISE_DOTS,
+    NOISE_LINES
+};
+
+struct MapTile {
+    std::string filename;
+    bool loaded = false;
+};
 
 class MapEditorScene : public Scene
 {
@@ -44,20 +65,42 @@ private:
     // Data being edited
     TerrainData edit_data;
 
-    // Painter State
-    std::vector<unsigned char> heightmap_pixels; // Raw 8-bit grayscale data
+    // --- PAINTER STATE ---
+    std::vector<unsigned char> heightmap_pixels; // Raw 8-bit grayscale
+    std::vector<unsigned char> colourmap_pixels; // RGB Preview
     GLuint heightmap_tex_id = 0;
+    GLuint colourmap_tex_id = 0;
+    
     int hmap_width = 1024;
     int hmap_height = 1024;
     
+    // Brush
     float brush_size = 50.0f;
-    float brush_strength = 2.0f; // Height change per frame
-
-    // GUI State
-    char title_buf[128] = "";
-    char tag_names[MAX_TAG_AMOUNT][64];
+    float brush_strength = 5.0f;
+    BrushShape current_brush = BrushShape::CIRCLE;
     
-    // Import/Save State
+    // View
+    bool show_colour_preview = false;
+    bool show_tags_preview = true;
+
+    // Gradients for Color generation (Loaded to RAM for CPU processing)
+    std::vector<glm::vec3> grad_elev;
+    std::vector<glm::vec3> grad_steep;
+    std::vector<glm::vec3> grad_water;
+
+    // --- TILEMAP STATE ---
+    static const int GRID_ROWS = 3;
+    static const int GRID_COLS = 3;
+    MapTile tile_grid[GRID_ROWS][GRID_COLS];
+    int current_tile_x = 1;
+    int current_tile_y = 1;
+
+    // --- GUI STATE ---
+    std::string title_buf = "";
+    std::string tag_names[MAX_TAG_AMOUNT];
+    std::string external_import_path = ""; // Buffer for external import
+    
+    // Import/Save
     std::vector<std::string> available_levels;
     int selected_level_idx = -1;
     
@@ -65,6 +108,9 @@ private:
     std::string status_msg = "";
     float status_timer = 0.0f;
     bool status_is_error = false;
+
+    /* other */
+    bool initalized = false;
 
 public:
 
@@ -75,17 +121,25 @@ public:
         if (!fs::exists(LEVELS_PATH)) fs::create_directories(LEVELS_PATH);
         if (!fs::exists(HEIGHTMAPS_PATH)) fs::create_directories(HEIGHTMAPS_PATH);
 
-        // 2. Load Default Data
+        // 2. Load Gradients into memory for fast CPU preview generation
+        load_gradients_to_ram();
+
+        // 3. Load Default Data
         edit_data = terrain_transalpine; 
-        
-        // 3. Load Initial Heightmap into Memory for Painting
         load_heightmap_to_memory(edit_data.heightmap_path);
         
         sync_buffers_from_struct();
         refresh_level_list();
+
+        // Init Tilemap names
+        for(int y=0; y<GRID_ROWS; y++) 
+            for(int x=0; x<GRID_COLS; x++) 
+                tile_grid[y][x].filename = "tile_" + std::to_string(x) + "_" + std::to_string(y);
     }
     
     void init( ) override {
+        if (initalized) return;
+        initalized = true;
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -96,24 +150,26 @@ public:
     }
 
     void loop(float dt) override {
-        // Prevent crash on minimize (width/height = 0)
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         if (w == 0 || h == 0) return;
 
-        // Update Timers
         if (status_timer > 0.0f) status_timer -= dt;
 
-        // Render World (Optional, if you want to see the 3D preview behind UI)
-        // world->render(); 
-
-        // ImGui Frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        draw_left_panel();  // Painter
-        draw_right_panel(); // Settings
+        // --- LAYOUT CALCULATION ---
+        float left_w = w * 0.2f;
+        float right_w = w * 0.2f;
+        float center_w = w * 0.6f;
+        float full_h = (float)h;
+
+        // Draw Panels
+        draw_left_panel(0, 0, left_w, full_h);
+        draw_center_panel(left_w, 0, center_w, full_h);
+        draw_right_panel(left_w + center_w, 0, right_w, full_h);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -121,6 +177,7 @@ public:
 
     ~MapEditorScene() {
         if (heightmap_tex_id != 0) glDeleteTextures(1, &heightmap_tex_id);
+        if (colourmap_tex_id != 0) glDeleteTextures(1, &colourmap_tex_id);
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
@@ -129,76 +186,215 @@ public:
 private:
 
     // =========================================================
-    // PANELS
+    // PANEL 1: TOOLS (LEFT)
     // =========================================================
-
-    void draw_left_panel() {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        float panel_width = 450.0f;
+    void draw_left_panel(float x, float y, float w, float h) {
+        ImGui::SetNextWindowPos(ImVec2(x, y));
+        ImGui::SetNextWindowSize(ImVec2(w, h));
         
-        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y));
-        ImGui::SetNextWindowSize(ImVec2(panel_width, viewport->Size.y));
+        ImGui::Begin("Tools", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
         
-        ImGui::Begin("Heightmap Painter", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+        ImGui::TextDisabled("MAP EDITOR TOOLKIT");
+        ImGui::Separator();
 
+        // --- VIEW SETTINGS ---
+        ImGui::Text("View Mode");
+        if (ImGui::Button("Heightmap", ImVec2(w * 0.45f, 0))) show_colour_preview = false;
+        ImGui::SameLine();
+        if (ImGui::Button("Colormap", ImVec2(w * 0.45f, 0))) {
+            generate_colour_map_preview();
+            show_colour_preview = true;
+        }
+        
+        // RECOLOUR BUTTON
+        if (ImGui::Button("Force Recolour", ImVec2(-1, 0))) {
+            generate_colour_map_preview();
+            show_colour_preview = true; // Automatically switch to color view
+        }
+
+        ImGui::Checkbox("Show Tag Markers", &show_tags_preview);
+        
+        ImGui::Dummy(ImVec2(0, 10));
+        ImGui::Separator();
+
+        // --- BRUSH SETTINGS ---
         ImGui::Text("Brush Settings");
         ImGui::SliderFloat("Size", &brush_size, 1.0f, 200.0f);
-        ImGui::SliderFloat("Strength", &brush_strength, 0.1f, 10.0f);
+        ImGui::SliderFloat("Strength", &brush_strength, 0.1f, 20.0f);
         
+        ImGui::Text("Shape:");
+        if (ImGui::RadioButton("Circle", current_brush == BrushShape::CIRCLE)) current_brush = BrushShape::CIRCLE;
+        if (ImGui::RadioButton("Oval (H)", current_brush == BrushShape::OVAL_H)) current_brush = BrushShape::OVAL_H;
+        if (ImGui::RadioButton("Oval (V)", current_brush == BrushShape::OVAL_V)) current_brush = BrushShape::OVAL_V;
+        if (ImGui::RadioButton("Noise (Dots)", current_brush == BrushShape::NOISE_DOTS)) current_brush = BrushShape::NOISE_DOTS;
+        if (ImGui::RadioButton("Noise (Lines)", current_brush == BrushShape::NOISE_LINES)) current_brush = BrushShape::NOISE_LINES;
+
+        ImGui::Dummy(ImVec2(0, 10));
         ImGui::Separator();
-        ImGui::Text("2D View (Left: Raise, Right: Lower)");
 
-        // Display Texture
-        ImVec2 avail = ImGui::GetContentRegionAvail();
-        float aspect = (float)hmap_width / (float)hmap_height;
-        float image_w = avail.x;
-        float image_h = image_w / aspect;
-
-        ImVec2 p_min = ImGui::GetCursorScreenPos();
-        ImGui::Image((void*)(intptr_t)heightmap_tex_id, ImVec2(image_w, image_h));
+        // --- TILEMAP SYSTEM ---
+        ImGui::Text("Tilemap Manager");
         
-        // Handle Input
-        if (ImGui::IsItemHovered()) {
-            // Calculate UV of mouse
-            ImVec2 mouse_pos = ImGui::GetMousePos();
-            float rel_x = mouse_pos.x - p_min.x;
-            float rel_y = mouse_pos.y - p_min.y;
-            
-            float u = rel_x / image_w;
-            float v = rel_y / image_h;
+        // Draw 3x3 Grid
+        float grid_size = w - 30; // Padding
+        float slot_size = grid_size / 3.0f;
+        
+        for (int row = 0; row < GRID_ROWS; row++) {
+            for (int col = 0; col < GRID_COLS; col++) {
+                ImGui::PushID(row * GRID_COLS + col);
+                
+                bool is_active = (row == current_tile_y && col == current_tile_x);
+                if (is_active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+                
+                std::string lbl = std::to_string(col) + "," + std::to_string(row);
+                if (ImGui::Button(lbl.c_str(), ImVec2(slot_size - 5, slot_size - 5))) {
+                    // Switch tile logic here (save current, load new)
+                    current_tile_x = col;
+                    current_tile_y = row;
+                    // In real app: save_current(); load_tile(tile_grid[row][col].filename);
+                }
+                
+                if (is_active) ImGui::PopStyleColor();
+                
+                if (col < GRID_COLS - 1) ImGui::SameLine();
+                ImGui::PopID();
+            }
+        }
+        ImGui::TextDisabled("Current Tile: %d, %d", current_tile_x, current_tile_y);
 
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                apply_brush(u, v, true);
-            }
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-                apply_brush(u, v, false);
-            }
+        ImGui::Separator();
+        ImGui::Separator();
+
+        if (ImGui::Button("Return to main menu", ImVec2(w * 0.8f, 0))) {
+            end_scene(SceneID::TITLE_CARD);
         }
 
         ImGui::End();
     }
 
-    void draw_right_panel() {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        float panel_width = 400.0f;
-        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - panel_width, viewport->Pos.y));
-        ImGui::SetNextWindowSize(ImVec2(panel_width, viewport->Size.y));
+    // =========================================================
+    // PANEL 2: PREVIEW (CENTER)
+    // =========================================================
+    void draw_center_panel(float x, float y, float w, float h) {
+        ImGui::SetNextWindowPos(ImVec2(x, y));
+        ImGui::SetNextWindowSize(ImVec2(w, h));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0)); // No padding for full view
         
-        ImGui::Begin("Terrain Properties", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("Preview", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+        
+        // Decide texture to show
+        GLuint tex_id = show_colour_preview ? colourmap_tex_id : heightmap_tex_id;
+        
+        // Calculate Aspect Ratio to fit in center window
+        ImVec2 content_size = ImGui::GetContentRegionAvail();
+        float aspect = (float)hmap_width / (float)hmap_height;
+        float draw_w = content_size.x;
+        float draw_h = draw_w / aspect;
+        
+        // If height is too big, scale by height
+        if (draw_h > content_size.y) {
+            draw_h = content_size.y;
+            draw_w = draw_h * aspect;
+        }
 
-        // --- Header / Save / Load ---
-        if (ImGui::Button("Save Level", ImVec2(120, 30))) save_level();
+        // Center the image
+        float offset_x = (content_size.x - draw_w) * 0.5f;
+        float offset_y = (content_size.y - draw_h) * 0.5f;
+        ImGui::SetCursorPos(ImVec2(offset_x, offset_y));
+
+        ImVec2 img_start = ImGui::GetCursorScreenPos();
+        ImGui::Image((void*)(intptr_t)tex_id, ImVec2(draw_w, draw_h));
+
+        // --- INTERACTION ---
+        if (ImGui::IsItemHovered()) {
+            ImVec2 mouse_pos = ImGui::GetMousePos();
+            float u = (mouse_pos.x - img_start.x) / draw_w;
+            float v = (mouse_pos.y - img_start.y) / draw_h;
+
+            // Draw Brush Preview
+            ImDrawList* draw_list = ImGui::GetWindowDrawList();
+            float preview_radius = (brush_size / (float)hmap_width) * draw_w; 
+            
+            if (current_brush == BrushShape::OVAL_H) 
+                draw_list->AddEllipse(mouse_pos, ImVec2(preview_radius * 2.0f, preview_radius * 0.5f), IM_COL32(255, 255, 0, 200));
+            else if (current_brush == BrushShape::OVAL_V) 
+                draw_list->AddEllipse(mouse_pos, ImVec2(preview_radius * 0.5f, preview_radius * 2.0f), IM_COL32(255, 255, 0, 200));
+            else 
+                draw_list->AddCircle(mouse_pos, preview_radius, IM_COL32(255, 255, 0, 200));
+
+            // Apply Paint
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) apply_brush(u, v, true);
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) apply_brush(u, v, false);
+        }
+
+        // --- TAG PREVIEW ---
+        if (show_tags_preview) {
+            ImDrawList* draw_list = ImGui::GetWindowDrawList();
+            for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+                if (edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
+                
+                float tx = img_start.x + edit_data.tags[i].uv_x * draw_w;
+                float ty = img_start.y + (1.f-edit_data.tags[i].uv_y) * draw_h;
+                
+                // Draw Dot
+                draw_list->AddCircleFilled(ImVec2(tx, ty), 5.0f, IM_COL32(255, 0, 0, 255));
+                draw_list->AddCircle(ImVec2(tx, ty), 6.0f, IM_COL32(255, 255, 255, 255));
+                
+                // Draw Text Label
+                std::string lbl = !edit_data.tags[i].name.empty() ? edit_data.tags[i].name : "Tag";
+                draw_list->AddText(ImVec2(tx + 8, ty - 10), IM_COL32(255, 255, 255, 255), lbl.c_str());
+            }
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
+    // =========================================================
+    // PANEL 3: SETTINGS (RIGHT)
+    // =========================================================
+    void draw_right_panel(float x, float y, float w, float h) {
+        ImGui::SetNextWindowPos(ImVec2(x, y));
+        ImGui::SetNextWindowSize(ImVec2(w, h));
         
-        ImGui::SameLine();
+        ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+
+        // CREATE NEW
+        if (ImGui::Button("Create New Map", ImVec2(-1, 30))) {
+            create_new_map();
+        }
         
-        // Import Dropdown
-        ImGui::PushItemWidth(150);
+        ImGui::Separator();
+
+        // IMPORT EXTERNAL
+        ImGui::Text("Import Heightmap (PNG)");
+        char path_buf[256];
+        strncpy_s(path_buf, external_import_path.c_str(), 255);
+        if (ImGui::InputText("##Path", path_buf, 256)) {
+            external_import_path = path_buf;
+        }
+        if (ImGui::Button("Import from Path", ImVec2(-1, 0))) {
+            load_heightmap_to_memory(external_import_path.c_str());
+            status_msg = "Imported External PNG!";
+            status_timer = 2.0f;
+            status_is_error = false;
+        }
+
+        ImGui::Separator();
+
+        // SAVE
+        if (ImGui::Button("Save JSON & PNG", ImVec2(-1, 30))) save_level();
+        
+        ImGui::Separator();
+        ImGui::Text("Edit Existing");
+        ImGui::PushItemWidth(-1);
+        
         const char* preview = (selected_level_idx >= 0 && selected_level_idx < available_levels.size()) 
-                              ? available_levels[selected_level_idx].c_str() 
-                              : "Select Level...";
+                              ? available_levels[selected_level_idx].c_str() : "Select Level...";
+        
         if (ImGui::BeginCombo("##import", preview)) {
             for (int i = 0; i < available_levels.size(); i++) {
-                const bool is_selected = (selected_level_idx == i);
+                bool is_selected = (selected_level_idx == i);
                 if (ImGui::Selectable(available_levels[i].c_str(), is_selected)) {
                     selected_level_idx = i;
                     load_level(available_levels[i]);
@@ -208,99 +404,71 @@ private:
             ImGui::EndCombo();
         }
         ImGui::PopItemWidth();
-        
-        ImGui::SameLine();
-        if (ImGui::Button("R")) refresh_level_list(); // Refresh button
 
-        // Feedback Message
         if (status_timer > 0.0f) {
-            ImVec4 col = status_is_error ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
-            ImGui::TextColored(col, "%s", status_msg.c_str());
-        } else {
-            ImGui::Text(""); // Spacer
+            ImGui::TextColored(status_is_error ? ImVec4(1,0,0,1) : ImVec4(0,1,0,1), "%s", status_msg.c_str());
         }
 
         ImGui::Separator();
+        ImGui::Text("Metadata");
 
-        // --- Metadata ---
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Level Title");
-        ImGui::InputText("##Title", title_buf, sizeof(title_buf));
-        
-        // Auto-generated paths display (Read-only)
-        std::string safe_title = std::string(title_buf);
-        std::replace(safe_title.begin(), safe_title.end(), ' ', '_');
-        ImGui::TextDisabled("Save Path: %s%s.json", LEVELS_PATH.c_str(), safe_title.c_str());
+        char path_buf_2[sizeof(title_buf)];
+        strncpy_s(path_buf_2, title_buf.c_str(), sizeof(title_buf)-1);
+        if (ImGui::InputText("Title", path_buf_2, sizeof(title_buf))) {
+            title_buf = path_buf_2;
+        }
+
+        ImGui::TextDisabled("File: %s", LEVELS_PATH.c_str());
 
         ImGui::Separator();
-
-        // --- Physics ---
-        if (ImGui::CollapsingHeader("Dimensions & Scale", ImGuiTreeNodeFlags_DefaultOpen)) {
-            // Validation: Keep > 0
-            if (ImGui::InputInt("Res X", &edit_data.resolution_x)) 
-                edit_data.resolution_x = std::max(128, edit_data.resolution_x);
-            if (ImGui::InputInt("Res Y", &edit_data.resolution_y)) 
-                edit_data.resolution_y = std::max(128, edit_data.resolution_y);
-            
-            ImGui::DragFloat("Min Height", &edit_data.minimum_height_reach, 1.0f, 0.0f, 10000.0f);
-            ImGui::DragFloat("Max Height", &edit_data.maximum_height_reach, 1.0f, 0.0f, 10000.0f);
-            
-            // Scale shouldn't be negative
-            if (ImGui::InputFloat("Vertical Scale", &edit_data.vertical_scale, 0.0001f, 0.001f, "%.6f"))
-                edit_data.vertical_scale = std::max(0.00001f, edit_data.vertical_scale);
+        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::InputInt("Res X", &edit_data.resolution_x);
+            ImGui::InputInt("Res Y", &edit_data.resolution_y);
+            ImGui::DragFloat("Min H", &edit_data.minimum_height_reach);
+            ImGui::DragFloat("Max H", &edit_data.maximum_height_reach);
+            ImGui::InputFloat("Scale", &edit_data.vertical_scale, 0.0001f);
         }
 
-        // --- Environment ---
-        if (ImGui::CollapsingHeader("Environment", ImGuiTreeNodeFlags_DefaultOpen)) {
-             ImGui::SliderFloat("Water Level", &edit_data.water_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
-             ImGui::SliderFloat("Snow Level", &edit_data.snow_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
+        if (ImGui::CollapsingHeader("Biome", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::SliderFloat("Water", &edit_data.water_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
+            ImGui::SliderFloat("Snow", &edit_data.snow_level_height, edit_data.minimum_height_reach, edit_data.maximum_height_reach);
         }
 
-        // --- Tags ---
-        if (ImGui::CollapsingHeader("Terrain Tags", ImGuiTreeNodeFlags_DefaultOpen)) {
-            
-            // List active tags
+        if (ImGui::CollapsingHeader("Tags")) {
             for (int i = 0; i < MAX_TAG_AMOUNT; i++) {
                 if (edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
-
                 ImGui::PushID(i);
                 
-                // Delete Button
                 if (ImGui::Button("X")) {
                     edit_data.tags[i].type = TerrainTagType::DISABLED;
                     tag_names[i][0] = '\0';
                 }
                 ImGui::SameLine();
-
-                // Tree Node for details
-                if (ImGui::TreeNode(tag_names[i][0] == '\0' ? "Unnamed Tag" : tag_names[i])) {
-                    
+                if (ImGui::TreeNode(tag_names[i][0] == '\0' ? "Tag" : tag_names[i].c_str())) {
                     // Type
-                    const char* types[] = { "Name Tag", "Level Start", "Level End", "Disabled" };
-                    int current_type = (int)edit_data.tags[i].type;
-                    if (ImGui::Combo("Type", &current_type, types, IM_ARRAYSIZE(types))) {
-                        edit_data.tags[i].type = (TerrainTagType)current_type;
+                    int type = (int)edit_data.tags[i].type;
+                    const char* types[] = { "Name", "Start", "End", "Disabled" };
+                    ImGui::Combo("Type", &type, types, 4);
+                    edit_data.tags[i].type = (TerrainTagType)type;
+                    
+                    char path_buf_3[64];
+                    strncpy_s(path_buf_3, tag_names[i].c_str(), 63);
+                    if (ImGui::InputText("Lbl", path_buf_3, 64)){
+                        tag_names[i] = path_buf_3;
                     }
 
-                    // Name
-                    ImGui::InputText("Label", tag_names[i], sizeof(tag_names[i]));
-
-                    // Position
-                    ImGui::SliderFloat("UV X", &edit_data.tags[i].uv_x, 0.0f, 1.0f);
-                    ImGui::SliderFloat("UV Y", &edit_data.tags[i].uv_y, 0.0f, 1.0f);
-                    
+                    ImGui::SliderFloat("U", &edit_data.tags[i].uv_x, 0.0f, 1.0f);
+                    ImGui::SliderFloat("V", &edit_data.tags[i].uv_y, 0.0f, 1.0f);
                     ImGui::TreePop();
                 }
                 ImGui::PopID();
             }
-
-            // Add New Tag Button
-            if (ImGui::Button("+ Add New Tag", ImVec2(-1, 0))) {
-                for (int i = 0; i < MAX_TAG_AMOUNT; i++) {
-                    if (edit_data.tags[i].type == TerrainTagType::DISABLED) {
+            if (ImGui::Button("Add Tag")) {
+                for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+                    if(edit_data.tags[i].type == TerrainTagType::DISABLED) {
                         edit_data.tags[i].type = TerrainTagType::NAME_TAG;
-                        edit_data.tags[i].uv_x = 0.5f;
-                        edit_data.tags[i].uv_y = 0.5f;
-                        strncpy(tag_names[i], "New Tag", 64);
+                        edit_data.tags[i].uv_x = 0.5f; edit_data.tags[i].uv_y = 0.5f;
+                        tag_names[i] = "New Tag";
                         break;
                     }
                 }
@@ -311,44 +479,71 @@ private:
     }
 
     // =========================================================
-    // LOGIC
+    // BRUSH LOGIC
     // =========================================================
 
     void apply_brush(float u, float v, bool raise) {
         if (heightmap_pixels.empty()) return;
 
-        int center_x = (int)(u * hmap_width);
-        int center_y = (int)(v * hmap_height);
-        int radius = (int)brush_size;
-        int radius_sq = radius * radius;
+        int cx = (int)(u * hmap_width);
+        int cy = (int)(v * hmap_height);
+        float radius = brush_size;
         
+        // Bounds check optimized for loop range
+        int start_y = std::max(0, (int)(cy - radius * 2));
+        int end_y = std::min(hmap_height, (int)(cy + radius * 2));
+        int start_x = std::max(0, (int)(cx - radius * 2));
+        int end_x = std::min(hmap_width, (int)(cx + radius * 2));
+
         bool changed = false;
 
-        // Bounding box iteration
-        for (int y = center_y - radius; y <= center_y + radius; y++) {
-            for (int x = center_x - radius; x <= center_x + radius; x++) {
+        for (int y = start_y; y < end_y; y++) {
+            for (int x = start_x; x < end_x; x++) {
                 
-                // Check Bounds
-                if (x < 0 || x >= hmap_width || y < 0 || y >= hmap_height) continue;
+                float dx = (float)(x - cx);
+                float dy = (float)(y - cy);
+                float dist_sq = dx*dx + dy*dy;
+                float falloff = 0.0f;
 
-                // Circular Brush
-                int dx = x - center_x;
-                int dy = y - center_y;
-                if (dx*dx + dy*dy > radius_sq) continue;
+                // --- SHAPE LOGIC ---
+                switch (current_brush) {
+                    case BrushShape::CIRCLE:
+                        if (dist_sq > radius * radius) continue;
+                        falloff = 1.0f - (sqrt(dist_sq) / radius);
+                        break;
+                    
+                    case BrushShape::OVAL_H: // Horizontal stretch
+                        if ((dx*dx)/(radius*radius*4.0f) + (dy*dy)/(radius*radius*0.25f) > 1.0f) continue;
+                        falloff = 1.0f - sqrt((dx*dx)/(radius*radius*4.0f) + (dy*dy)/(radius*radius*0.25f));
+                        break;
 
-                // Falloff (Soft Brush)
-                float dist = sqrt(dx*dx + dy*dy);
-                float falloff = 1.0f - (dist / radius);
-                falloff = falloff * falloff; // Quad curve
+                    case BrushShape::OVAL_V: // Vertical stretch
+                        if ((dx*dx)/(radius*radius*0.25f) + (dy*dy)/(radius*radius*4.0f) > 1.0f) continue;
+                        falloff = 1.0f - sqrt((dx*dx)/(radius*radius*0.25f) + (dy*dy)/(radius*radius*4.0f));
+                        break;
 
-                // Apply Height
-                int idx = (y * hmap_width + x); // 1 channel
+                    case BrushShape::NOISE_DOTS:
+                        if (dist_sq > radius * radius) continue;
+                        if ((rand() % 100) > 20) continue; // 20% density
+                        falloff = 1.0f - (sqrt(dist_sq) / radius);
+                        break;
+
+                    case BrushShape::NOISE_LINES:
+                        if (dist_sq > radius * radius) continue;
+                        // Simple linear noise pattern based on x
+                        if ( abs((x + y) % 10) > 2 ) continue; 
+                        falloff = 1.0f - (sqrt(dist_sq) / radius);
+                        break;
+                }
+
+                if (falloff <= 0.0f) continue;
+                falloff = falloff * falloff; // Smooth quad curve
+
+                int idx = y * hmap_width + x;
                 float val = (float)heightmap_pixels[idx];
                 float change = brush_strength * falloff;
                 
-                if (raise) val += change;
-                else val -= change;
-
+                val = raise ? (val + change) : (val - change);
                 val = std::clamp(val, 0.0f, 255.0f);
                 
                 if (heightmap_pixels[idx] != (unsigned char)val) {
@@ -358,165 +553,219 @@ private:
             }
         }
 
-        if (changed) update_texture();
+        if (changed) {
+            update_texture(heightmap_tex_id, heightmap_pixels.data(), false);
+            // If viewing color, auto-update it roughly (or demand button press for perf)
+            if (show_colour_preview) generate_colour_map_preview();
+        }
+    }
+
+    // =========================================================
+    // COLOR MAP GENERATION (CPU)
+    // =========================================================
+
+    // Loads gradient textures into vectors for fast CPU lookup
+    void load_gradients_to_ram() {
+        auto load_to_vec = [](const char* path, std::vector<glm::vec3>& vec) {
+            int w, h, ch;
+            unsigned char* data = stbi_load(path, &w, &h, &ch, 3);
+            if(data) {
+                vec.resize(w);
+                for(int i=0; i<w; i++) {
+                    vec[i] = glm::vec3(data[i*3]/255.f, data[i*3+1]/255.f, data[i*3+2]/255.f);
+                }
+                stbi_image_free(data);
+            }
+        };
+        load_to_vec(GRADIENT_ELEVATION_PATH, grad_elev);
+        load_to_vec(GRADIENT_STEEPNESS_PATH, grad_steep);
+        load_to_vec(GRADIENT_WATER_PATH, grad_water);
+    }
+
+    glm::vec3 sample_gradient(const std::vector<glm::vec3>& grad, float t) {
+        if(grad.empty()) return glm::vec3(1,0,1); // Error pink
+        t = std::clamp(t, 0.0f, 1.0f);
+        int idx = (int)(t * (grad.size() - 1));
+        return grad[idx];
+    }
+
+    void generate_colour_map_preview() {
+        if (colourmap_pixels.size() != hmap_width * hmap_height * 3)
+            colourmap_pixels.resize(hmap_width * hmap_height * 3);
+
+        if (colourmap_tex_id == 0) glGenTextures(1, &colourmap_tex_id);
+
+        for(int y=0; y<hmap_height; y++) {
+            for(int x=0; x<hmap_width; x++) {
+                int idx_h = y * hmap_width + x;
+                int idx_c = idx_h * 3;
+
+                // 1. Raw Height (0-1)
+                float h_val = heightmap_pixels[idx_h] / 255.0f;
+                
+                // 2. Real Elevation
+                float elevation = edit_data.minimum_height_reach + h_val * (edit_data.maximum_height_reach - edit_data.minimum_height_reach);
+
+                // 3. Steepness (Simple derivative)
+                float h_right = (x < hmap_width-1) ? heightmap_pixels[idx_h+1]/255.f : h_val;
+                float h_down  = (y < hmap_height-1) ? heightmap_pixels[idx_h+hmap_width]/255.f : h_val;
+                float dx = abs(h_val - h_right);
+                float dy = abs(h_val - h_down);
+                float steepness = sqrt(dx*dx + dy*dy) * STEEPNESS_SCALE * 10.0f; 
+
+                glm::vec3 final_col;
+
+                if (elevation < edit_data.water_level_height) {
+                    // Water
+                    float depth = (edit_data.water_level_height - elevation) / 500.0f; 
+                    final_col = sample_gradient(grad_water, depth);
+                } else {
+                    // Land
+                    float t_elev = elevation / ELEVATION_GRADIENT_MAX_HEIGHT;
+                    glm::vec3 c_elev = sample_gradient(grad_elev, t_elev);
+                    glm::vec3 c_steep = sample_gradient(grad_steep, steepness);
+                    final_col = glm::mix(c_steep, c_elev, ELEVATION_GRADIENT_STRENGTH); // Mix based on strength
+                    
+                    // Snow
+                    if (elevation > edit_data.snow_level_height) {
+                        float snow_f = (elevation - edit_data.snow_level_height) / SNOW_FALLOFF_RANGE;
+                        final_col = glm::mix(final_col, glm::vec3(1.0f), std::clamp(snow_f, 0.0f, 1.0f));
+                    }
+                }
+
+                colourmap_pixels[idx_c + 0] = (unsigned char)(final_col.r * 255);
+                colourmap_pixels[idx_c + 1] = (unsigned char)(final_col.g * 255);
+                colourmap_pixels[idx_c + 2] = (unsigned char)(final_col.b * 255);
+            }
+        }
+        update_texture(colourmap_tex_id, colourmap_pixels.data(), true);
+    }
+
+    // =========================================================
+    // CORE HELPERS
+    // =========================================================
+
+    void create_new_map() {
+        // Reset to default struct
+        edit_data = terrain_transalpine; 
+        title_buf = "New Map";
+        
+        // Reset buffers
+        hmap_width = 1024;
+        hmap_height = 1024;
+        heightmap_pixels.assign(hmap_width * hmap_height, 20); // Dark grey flat terrain
+        
+        // Clear tags
+        for(int k=0; k<MAX_TAG_AMOUNT; k++) {
+            edit_data.tags[k].type = TerrainTagType::DISABLED;
+            tag_names[k][0] = '\0';
+        }
+        
+        sync_buffers_from_struct();
+        if (heightmap_tex_id == 0) glGenTextures(1, &heightmap_tex_id);
+        update_texture(heightmap_tex_id, heightmap_pixels.data(), false);
+        
+        status_msg = "New Map Created!";
+        status_timer = 2.0f;
     }
 
     void load_heightmap_to_memory(const std::string& path) {
         int w, h, ch;
-        // Use stbi directly to get raw bytes
-        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 1); // Force 1 channel (grayscale)
-        
+        unsigned char* data = stbi_load(path.c_str(), &w, &h, &ch, 1);
         if (data) {
-            hmap_width = w;
-            hmap_height = h;
+            hmap_width = w; hmap_height = h;
             heightmap_pixels.assign(data, data + (w * h));
             stbi_image_free(data);
         } else {
-            // Create fallback blank texture if file missing
-            hmap_width = 1024;
-            hmap_height = 1024;
-            heightmap_pixels.assign(hmap_width * hmap_height, 0); // Black
-            std::cout << "Warning: Could not load heightmap, creating blank." << std::endl;
+            // Only warn if path was actually provided
+            if (!path.empty()) std::cout << "Warning: Could not load heightmap at: " << path << std::endl;
+            // Ensure we have something
+            if (heightmap_pixels.empty()) {
+                hmap_width = 1024; hmap_height = 1024;
+                heightmap_pixels.assign(1024*1024, 0);
+            }
         }
-
-        // Generate OpenGL Texture
         if (heightmap_tex_id == 0) glGenTextures(1, &heightmap_tex_id);
-        update_texture();
+        update_texture(heightmap_tex_id, heightmap_pixels.data(), false);
     }
 
-    void update_texture() {
-        glBindTexture(GL_TEXTURE_2D, heightmap_tex_id);
-        // Using GL_RED for single channel visualization. 
-        // Note: For ImGui::Image to render it as grayscale (not red), we might want to use swizzle mask 
-        // or just upload as RGB. For simplicity, let's use RGB here by duplicating bytes, 
-        // OR better: use GL_RED and rely on a shader. But ImGui uses default shaders. 
-        // Easiest "lazy" fix for visualization: upload as GL_RGB.
-        
-        // Temp RGB buffer for visualization
-        std::vector<unsigned char> vis_buffer(hmap_width * hmap_height * 3);
-        for(size_t i=0; i < heightmap_pixels.size(); i++) {
-            vis_buffer[i*3+0] = heightmap_pixels[i];
-            vis_buffer[i*3+1] = heightmap_pixels[i];
-            vis_buffer[i*3+2] = heightmap_pixels[i];
+    void update_texture(GLuint id, unsigned char* data, bool rgb) {
+        glBindTexture(GL_TEXTURE_2D, id);
+        GLenum format = rgb ? GL_RGB : GL_RED;
+        GLenum internal = rgb ? GL_RGB : GL_RED;
+        // Swizzle for grayscale to appear red/white in preview if needed, or just use GL_RED and let ImGui render red channel
+        if (!rgb) { 
+            GLint swizzleMask[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
+            glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask);
         }
-
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, hmap_width, hmap_height, 0, GL_RGB, GL_UNSIGNED_BYTE, vis_buffer.data());
-        
+        glTexImage2D(GL_TEXTURE_2D, 0, internal, hmap_width, hmap_height, 0, format, GL_UNSIGNED_BYTE, data);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
-    // =========================================================
-    // IO OPERATIONS
-    // =========================================================
+    void sync_buffers_from_struct() {
+        if(!edit_data.title.empty()) title_buf = edit_data.title;
+        for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+            if(!edit_data.tags[i].name.empty()) tag_names[i] = edit_data.tags[i].name, 64;
+            else tag_names[i][0]='\0';
+        }
+    }
 
     void refresh_level_list() {
         available_levels.clear();
         if (fs::exists(LEVELS_PATH)) {
             for (const auto& entry : fs::directory_iterator(LEVELS_PATH)) {
-                if (entry.path().extension() == ".json") {
+                if (entry.path().extension() == ".json")
                     available_levels.push_back(entry.path().filename().string());
-                }
             }
         }
     }
 
-    void sync_buffers_from_struct() {
-        if (edit_data.title) strncpy(title_buf, edit_data.title, sizeof(title_buf));
-        
-        for(int i=0; i<MAX_TAG_AMOUNT; i++) {
-             if (edit_data.tags[i].name)
-                 strncpy(tag_names[i], edit_data.tags[i].name, sizeof(tag_names[i]));
-             else 
-                 tag_names[i][0] = '\0';
-        }
-    }
-
     void save_level() {
-        // 1. Prepare Paths based on Title
-        std::string clean_title = title_buf;
-        if (clean_title.empty()) clean_title = "untitled_level";
-        std::replace(clean_title.begin(), clean_title.end(), ' ', '_');
-
-        std::string json_filename = clean_title + ".json";
-        std::string hmap_filename = clean_title + "_heightmap.png";
+        std::string clean = title_buf;
+        if(clean.empty()) clean = "untitled";
+        std::replace(clean.begin(), clean.end(), ' ', '_');
         
-        std::string full_json_path = LEVELS_PATH + json_filename;
-        std::string full_hmap_path = HEIGHTMAPS_PATH + hmap_filename;
+        std::string json_p = LEVELS_PATH + clean + ".json";
+        std::string png_p = HEIGHTMAPS_PATH + clean + "_heightmap.png";
 
-        // 2. Save PNG
-        // We write the raw grayscale data. Stride is width * 1 byte.
-        int success = stbi_write_png(full_hmap_path.c_str(), hmap_width, hmap_height, 1, heightmap_pixels.data(), hmap_width);
-        
-        if (!success) {
-            status_msg = "Error Saving Heightmap!";
-            status_is_error = true;
-            status_timer = 3.0f;
-            return;
+        if(stbi_write_png(png_p.c_str(), hmap_width, hmap_height, 1, heightmap_pixels.data(), hmap_width)) {
+            json j;
+            j["title"] = std::string(title_buf);
+            j["heightmap_path"] = png_p;
+            j["resolution_x"] = edit_data.resolution_x;
+            j["resolution_y"] = edit_data.resolution_y;
+            j["min_height"] = edit_data.minimum_height_reach;
+            j["max_height"] = edit_data.maximum_height_reach;
+            j["vertical_scale"] = edit_data.vertical_scale;
+            j["water_level"] = edit_data.water_level_height;
+            j["snow_level"] = edit_data.snow_level_height;
+            
+            j["tags"] = json::array();
+            for(int i=0; i<MAX_TAG_AMOUNT; i++) {
+                if(edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
+                j["tags"].push_back({
+                    {"name", std::string(tag_names[i])},
+                    {"uv_x", edit_data.tags[i].uv_x},
+                    {"uv_y", edit_data.tags[i].uv_y},
+                    {"type", (int)edit_data.tags[i].type}
+                });
+            }
+            std::ofstream o(json_p); o << std::setw(4) << j;
+            status_msg = "Saved!"; status_is_error = false; status_timer = 2.0f;
+            refresh_level_list();
+        } else {
+            status_msg = "Save Error!"; status_is_error = true; status_timer = 3.0f;
         }
-
-        // 3. Update Struct Paths (Important: The game will load from these paths)
-        // Note: In a real engine, we'd handle strings better than const char* assignment.
-        // For now, we assume these paths are re-constructed on load or used transiently.
-        // We WON'T update the edit_data pointers here directly to point to local stack strings, 
-        // but we will write the correct paths to the JSON.
-
-        // 4. Save JSON
-        json j;
-        j["title"] = std::string(title_buf);
-        j["heightmap_path"] = full_hmap_path;
-        j["areas_data_path"] = std::string(edit_data.areas_data_path ? edit_data.areas_data_path : ""); // We don't edit this yet
-        j["resolution_x"] = edit_data.resolution_x;
-        j["resolution_y"] = edit_data.resolution_y;
-        j["min_height"] = edit_data.minimum_height_reach;
-        j["max_height"] = edit_data.maximum_height_reach;
-        j["vertical_scale"] = edit_data.vertical_scale;
-        j["water_level"] = edit_data.water_level_height;
-        j["snow_level"] = edit_data.snow_level_height;
-
-        j["tags"] = json::array();
-        for(int i=0; i<MAX_TAG_AMOUNT; i++) {
-            if (edit_data.tags[i].type == TerrainTagType::DISABLED) continue;
-            j["tags"].push_back({
-                {"name", std::string(tag_names[i])},
-                {"uv_x", edit_data.tags[i].uv_x},
-                {"uv_y", edit_data.tags[i].uv_y},
-                {"type", (int)edit_data.tags[i].type}
-            });
-        }
-
-        std::ofstream o(full_json_path);
-        o << std::setw(4) << j << std::endl;
-        o.close();
-
-        // 5. Feedback
-        status_msg = "Level Saved Successfully!";
-        status_is_error = false;
-        status_timer = 2.0f;
-        
-        refresh_level_list();
     }
 
-    void load_level(const std::string& filename) {
-        std::string full_path = LEVELS_PATH + filename;
-        std::ifstream i(full_path);
-        if (!i.good()) {
-            status_msg = "Failed to load JSON!";
-            status_is_error = true;
-            status_timer = 3.0f;
-            return;
-        }
-
-        json j;
-        i >> j;
-
-        // JSON -> Buffers
-        std::string s_title = j.value("title", "Untitled");
-        strncpy(title_buf, s_title.c_str(), sizeof(title_buf));
-
-        // JSON -> Struct
+    void load_level(const std::string& f) {
+        std::ifstream i(LEVELS_PATH + f);
+        if(!i.good()) return;
+        json j; i >> j;
+        
+        std::string t = j.value("title", "Untitled");
+        title_buf =  t.c_str();
         edit_data.resolution_x = j.value("resolution_x", 1024);
         edit_data.resolution_y = j.value("resolution_y", 1024);
         edit_data.minimum_height_reach = j.value("min_height", 0.f);
@@ -525,32 +774,23 @@ private:
         edit_data.water_level_height = j.value("water_level", 0.f);
         edit_data.snow_level_height = j.value("snow_level", 3000.f);
         
-        // Note: We need to store the path strings somewhere persistent if we want to use them
-        // For this editor logic, loading the heightmap pixels immediately is what matters.
-        std::string hmap_path = j.value("heightmap_path", "");
-        load_heightmap_to_memory(hmap_path);
-
-        // Tags
-        for(int k=0; k<MAX_TAG_AMOUNT; k++) {
-            edit_data.tags[k].type = TerrainTagType::DISABLED;
-            tag_names[k][0] = '\0';
-        }
-        if (j.contains("tags")) {
+        std::string path = j.value("heightmap_path", "");
+        load_heightmap_to_memory(path);
+        
+        for(int k=0; k<MAX_TAG_AMOUNT; k++) { edit_data.tags[k].type = TerrainTagType::DISABLED; tag_names[k][0]='\0'; }
+        if(j.contains("tags")) {
             int idx = 0;
-            for (auto& element : j["tags"]) {
-                if (idx >= MAX_TAG_AMOUNT) break;
-                std::string t_name = element["name"];
-                strncpy(tag_names[idx], t_name.c_str(), sizeof(tag_names[idx]));
-                edit_data.tags[idx].uv_x = element["uv_x"];
-                edit_data.tags[idx].uv_y = element["uv_y"];
-                edit_data.tags[idx].type = (TerrainTagType)element["type"];
+            for(auto& el : j["tags"]) {
+                if(idx>=MAX_TAG_AMOUNT) break;
+                std::string n = el["name"];
+                tag_names[idx] = n;
+                edit_data.tags[idx].uv_x = el["uv_x"];
+                edit_data.tags[idx].uv_y = el["uv_y"];
+                edit_data.tags[idx].type = (TerrainTagType)el["type"];
                 idx++;
             }
         }
-        
-        status_msg = "Level Loaded!";
-        status_is_error = false;
-        status_timer = 2.0f;
+        status_msg = "Loaded!"; status_is_error = false; status_timer = 2.0f;
     }
 };
 

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <string>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -23,7 +24,7 @@ public:
     unsigned int width = -1, height = -1;
 
     // generate from file path
-    Texture(const char* texturePath, bool flip_vert = true, bool load_16_bit = false)
+    Texture(std::string texturePath, bool flip_vert = true, bool load_16_bit = false)
     {
         glGenTextures(1, &ID);
         glBindTexture(GL_TEXTURE_2D, ID);
@@ -35,7 +36,7 @@ public:
         int width, height, nrColourChannels;
 
         if (load_16_bit) {
-            unsigned short* data = stbi_load_16(texturePath, &width, &height, &nrColourChannels, 1);
+            unsigned short* data = stbi_load_16(texturePath.c_str(), &width, &height, &nrColourChannels, 1);
             if (!data) { std::cout << "Failed to load 16bit texture" << std::endl; return; }
             this->width = width;
             this->height = height;
@@ -44,7 +45,7 @@ public:
             stbi_image_free(data);
 
         } else {
-            unsigned char *data = stbi_load(texturePath, &width, &height, &nrColourChannels, 0); 
+            unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &nrColourChannels, 0); 
             if (!data) { 
                 std::cout << "Failed to load texture at path: " << texturePath << std::endl; return; 
             }

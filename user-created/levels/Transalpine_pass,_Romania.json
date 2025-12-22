@@ -1,11 +1,10 @@
 {
-    "areas_data_path": "C:/Media/Projects/OpenGL/Layer_Trains/textures/terrain/transalpine_area_data.png",
-    "heightmap_path": "C:/Media/Projects/OpenGL/Layer_Trains/user-created/heightmaps/Transalpine_pass,_Romania_heightmap.png",
+    "heightmap_path": "C:/Media/Projects/OpenGL/Layer_Trains/user-created/heightmaps/Transalpine_pass,_Romania_heightmap.pgm",
     "max_height": 2500.0,
     "min_height": 1003.0,
-    "resolution_x": -1,
-    "resolution_y": -100,
-    "snow_level": 1551.0,
+    "resolution_x": 1024,
+    "resolution_y": 1024,
+    "snow_level": 1940.9940185546875,
     "tags": [
         {
             "name": "Level Start",

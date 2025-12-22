@@ -24,15 +24,25 @@ int main() {
     camera.set_min_orthographic_zoom(CAMERA_MIN_ZOOM); camera.set_max_orthographic_zoom(CAMERA_MAX_ZOOM);
     World world = World(&camera);
     ScreenUI screen_ui = ScreenUI(SCR_WIDTH, SCR_HEIGHT);
+    LevelManager lvl_manager = LevelManager();
+    lvl_manager.load_user_levels();
     
     // ==========================================================
     /* Create scenes */
 
-    const std::unordered_map<int, Scene*> scenes = {
-        { SceneID::TITLE_CARD, new TitleCardScene( &world, &camera, &screen_ui, &input_handler) },
+    std::unordered_map<int, Scene*> scenes = {
+        { SceneID::TITLE_CARD, new TitleCardScene( &lvl_manager, &world, &camera, &screen_ui, &input_handler) },
         { SceneID::MAP_EDITOR, new MapEditorScene ( window.get(), &world, &camera, &screen_ui, &input_handler) },
-        { SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
+        //{ SceneID::LEVEL1, new TerrainScene( &terrain_transalpine, &world, &camera, &screen_ui, &input_handler) }
     };
+
+    // add terrain scenes 
+    int first_level = SceneID::LEVEL1;
+    int last_level = SceneID::LEVEL10;
+    for (auto& lvl : lvl_manager.get_level_data()) {
+        scenes[first_level++] = new TerrainScene(&lvl, &world, &camera, &screen_ui, &input_handler);
+        if (first_level > last_level) break;
+    }
 
     // ==========================================================
     /* Render Loop */
@@ -50,6 +60,7 @@ int main() {
         std::cout << std::endl << std::endl << "=============================" << std::endl 
             << "Starting scene nr " << (current_id) << std::endl << "=============================" << std::endl;
         Scene* current_scene = scenes.at(current_id);
+        current_scene->set_active();
         current_scene->init();
         Shader *world_pos_buffer_shader = current_scene->get_world_pos_buffer_shader();
         vec4 bg_col = current_scene->get_background_colour();
@@ -83,8 +94,8 @@ int main() {
                 world.render(true);
             }
 
-            window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
-
+            if (current_id == SceneID::MAP_EDITOR) window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
+            
             /* Current scene logic */
             current_scene->loop(dt);
             
@@ -94,6 +105,7 @@ int main() {
                 world_pos_buffer_shader->bind_world_pos_buffer();
                 world_pos_buffer_shader->send_mouse_position( input_handler.get_mouse_position_normalized(),  CURSOR_INNER_RADIUS, CURSOR_OUTER_RADIUS );
             }
+            if (current_id != SceneID::MAP_EDITOR) window.clear(bg_col.r,bg_col.b,bg_col.g,bg_col.a);
             world.render();
 
             if (window_size_changed) screen_ui.set_new_window_size(window_size.x, window_size.y);

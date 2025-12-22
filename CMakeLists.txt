@@ -73,6 +73,7 @@ target_include_directories(Layer_Trains
         ${CMAKE_SOURCE_DIR}/src/lines
         ${CMAKE_SOURCE_DIR}/src/animation
         ${CMAKE_SOURCE_DIR}/src/nlohmann
+        ${CMAKE_SOURCE_DIR}/src/levels
 )
 
 # (opcjonalnie) jeśli chcesz wydruki configure-time

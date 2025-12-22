@@ -1,0 +1,31 @@
+{
+    "heightmap_path": "C:/Media/Projects/OpenGL/Layer_Trains/user-created/heightmaps/Karlovassi_Coast,_Greece_heightmap.png",
+    "max_height": 1416.0,
+    "min_height": -12.543000221252441,
+    "resolution_x": 1024,
+    "resolution_y": 1024,
+    "snow_level": 1416.0,
+    "tags": [
+        {
+            "name": "start",
+            "type": 1,
+            "uv_x": 0.02199999988079071,
+            "uv_y": 0.18000000715255737
+        },
+        {
+            "name": "End",
+            "type": 2,
+            "uv_x": 0.9610000252723694,
+            "uv_y": 0.09000000357627869
+        },
+        {
+            "name": "City of Karlovassi",
+            "type": 0,
+            "uv_x": 0.8479999899864197,
+            "uv_y": 0.9330000281333923
+        }
+    ],
+    "title": "Karlovassi Coast, Greece",
+    "vertical_scale": 0.37002652883529663,
+    "water_level": 0.004000000189989805
+}

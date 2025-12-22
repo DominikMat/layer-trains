@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "UIList.h"
 #include "TextButton.h"
+#include "LevelManager.h"
 #include "BezierLine2D.h"
 
 class TitleCardScene : public Scene
@@ -34,8 +35,10 @@ private:
     float end_scene_timer = 0.5;
     int next_scene_id = 0;
 
+    LevelManager *lvl_manager;
+
 public:
-    TitleCardScene (World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih) {
+    TitleCardScene (LevelManager *lvl_manager, World *w, Camera *c, ScreenUI *s, InputHandler *ih) : Scene(w,c,s,ih), lvl_manager(lvl_manager) {
     }
     
     void init() override {
@@ -69,8 +72,9 @@ public:
         /* Level select right panel */
         level_select_panel = new UIList(20, Colour::DARK_GREY, 20);
         level_select_panel->set_anchor(UIAnchor::MIDDLE_RIGHT, vec2(-250, 0));
-        for (int i=0; i<level_number; i++) {
-            std::string level_name = "level " + std::to_string(i+1);
+        auto levels = lvl_manager->get_level_data();
+        for (int i=0; i<levels.size(); i++) {
+            std::string level_name = levels[i].title;
             TextButton* lvl_btn = new TextButton(level_name.c_str(), 0.75f, Colour::WHITE, ButtonID::LEVEL_START+i,false);
             level_select_panel->add_item( lvl_btn );
         }
@@ -83,7 +87,7 @@ public:
     void loop(float dt) override {
         /* end scene logic */
         if (end_scene_flag) end_scene_timer -= dt;
-        if (end_scene_timer <= 0.f) end_scene(next_scene_id);
+        if (end_scene_timer <= 0.f) { end_scene_flag = false; end_scene_timer = 0.5f; end_scene(next_scene_id); }
     }
 
     void on_ui_button_clicked(int button_id, bool state) {

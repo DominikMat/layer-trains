@@ -7,6 +7,7 @@
 #include "ColourData.h" 
 #include <vector>
 #include <memory>
+#include <string>
 #include <glm/glm.hpp>
 #include <stdexcept>
 #include <functional>
@@ -29,7 +30,7 @@ class Interactable : public Object {
     float interaction_distance_sqr = 0.f;
     float highlight_distance_sqr = 0.f;
 
-    const char* name = "Interactable";
+    std::string name = "Interactable";
     int id;
     InteractionType type;
 
@@ -37,7 +38,7 @@ class Interactable : public Object {
 
     bool disabled = false;
 
-    Interactable(vec3 position, const char* name, InteractionType type, float interaction_distance, int id=-1) : 
+    Interactable(vec3 position, std::string name, InteractionType type, float interaction_distance, int id=-1) : 
         Object(position,vec3(interaction_distance)), 
         interaction_distance(interaction_distance),
         render_sphere(position, interaction_distance*INTERACTABLE_RENDER_RADUIS_MUTLIPLIER),

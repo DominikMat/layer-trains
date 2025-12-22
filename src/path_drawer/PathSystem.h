@@ -16,6 +16,7 @@
 #include "PathSpacialGrid.h"
 #include "Texture.h"
 #include <set>
+#include <string>
 
 using namespace glm;
 using namespace std;
@@ -62,7 +63,7 @@ public:
     TerrainPathSystem(Terrain *t, InteractableManager *im) : terrain(t), interactable_manager(im) {}
 
     
-    int create_path_handle_at_pos (vec2 local_pos, const char* name = "Path Handle") {
+    int create_path_handle_at_pos (vec2 local_pos, std::string name = "Path Handle") {
         Interactable *i = interactable_manager->create(
             vec3(0.f), name, InteractionType::PATH_HANDLE, INTERACTABLE_INTERACT_DISTANCE, node_id
         );
@@ -101,7 +102,7 @@ public:
         return nodes.back().handle_id;
     }
 
-    int create_new_destination(const char* name, vec2 local_pos, NodeDestinationType destination_type) {
+    int create_new_destination(std::string name, vec2 local_pos, NodeDestinationType destination_type) {
         int id = create_path_handle_at_pos(local_pos, name);
         nodes.back().destination_type = destination_type;
         return id;

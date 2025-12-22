@@ -39,15 +39,15 @@ private:
     CachedPathData cached_path_data;
 
 public:
-    ElevationLineDrawer(const char* heightmap_path, float heightmap_scale, bool use_16bit = false) 
+    ElevationLineDrawer(std::string heightmap_path, float heightmap_scale, bool use_16bit = false) 
         : heightmap_scale(heightmap_scale), is_16bit_data(use_16bit) 
     {        
         stbi_set_flip_vertically_on_load(true); 
         int width, height, nrChannels;
         if (is_16bit_data) {
-            height_data = stbi_load_16(heightmap_path, &width, &height, &nrChannels, 1);
+            height_data = stbi_load_16(heightmap_path.c_str(), &width, &height, &nrChannels, 1);
         } else {
-            height_data = stbi_load(heightmap_path, &width, &height, &nrChannels, 1);
+            height_data = stbi_load(heightmap_path.c_str(), &width, &height, &nrChannels, 1);
         }
         hmap_width = width; hmap_height = height;
 

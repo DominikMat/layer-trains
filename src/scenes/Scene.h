@@ -39,6 +39,7 @@ public:
     bool active() { return is_active; }
     void end_scene(int next_scene_id) { is_active = false; this->next_scene_id = next_scene_id; }
     int get_next_scene_id() { return next_scene_id; }
+    void set_active() { is_active = true; }
 
     virtual Shader* get_world_pos_buffer_shader() { return NULL; }
     

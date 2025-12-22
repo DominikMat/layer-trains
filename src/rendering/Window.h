@@ -29,6 +29,7 @@
 #include "settings/ColourData.h"
 #include "TerrainScene.h"
 #include "MapEditorScene.h"
+#include "LevelManager.h"
 #include <string>
 #include <fstream>
 #include <sstream>
